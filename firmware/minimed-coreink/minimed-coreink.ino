@@ -1,0 +1,1759 @@
+// Minimed monitor, M5Stack Core Ink, Arduino port
+//
+// A port of main_m5coreink.py. Board-independent logic is duplicated across
+// the two, not shared, and the hardware facts both depend on live in
+// docs/coreink-micropython-notes.md - read that before changing timing, power, panel or
+// wake behaviour. Nothing here is a guess; every constant with a number in
+// it was measured on this board.
+//
+// Feature-complete against main_m5coreink.py: power hold, config, WiFi,
+// fetch, clock, parse, all four screens, the toggle, deep-sleep scheduling,
+// fault codes, the buzzer and the AP setup portal. What remains is phase 6 -
+// an unattended soak against the MicroPython board, then the cutover call.
+//
+// The power-hold gate (see below) is settled: verified on battery that a
+// software reset recovers by itself, so a crash at 3am does not leave a
+// dead monitor.
+
+#include <M5Unified.h>
+#include <ArduinoJson.h>
+#include <Preferences.h>
+#include <WiFi.h>
+#include <time.h>
+#include "driver/gpio.h"
+#include "esp_timer.h"
+#include "esp_sleep.h"
+#include "esp_rom_crc.h"
+#include <lwip/netdb.h>
+#include "types.h"
+#include "screens.h"
+#include "faults.h"
+#include "portal.h"
+
+// ---------------------------------------------------------------- hardware
+
+static const gpio_num_t POWER_HOLD_PIN = GPIO_NUM_12;
+
+// The board's 3.3V rail is latched on by GPIO12. Out of reset that pad is an
+// input, and the rail coasts only briefly with it floating - so whoever
+// takes the latch must do it fast or, on battery, the board simply switches
+// off. M5.begin() is far too late; a global constructor runs before
+// app_main() and is the earliest hook a sketch can reach.
+//
+// Measured wall time from reset to this assert: 147ms on a software reset
+// (the crash case), 238ms on a cold boot - the difference is the stock
+// bootloader validating the image, which our patched MicroPython firmware
+// skips. Verified on battery: a restart loop keeps running, so 147ms is
+// inside the rail's coast.
+static int64_t power_hold_us = -1;
+
+static void assert_power_hold() {
+  gpio_config_t cfg = {};
+  cfg.pin_bit_mask = 1ULL << POWER_HOLD_PIN;
+  cfg.mode = GPIO_MODE_OUTPUT;
+  cfg.pull_up_en = GPIO_PULLUP_DISABLE;
+  cfg.pull_down_en = GPIO_PULLDOWN_DISABLE;
+  cfg.intr_type = GPIO_INTR_DISABLE;
+  gpio_config(&cfg);
+  gpio_set_level(POWER_HOLD_PIN, 1);
+  power_hold_us = esp_timer_get_time();
+}
+
+__attribute__((constructor)) static void early_power_hold() {
+  assert_power_hold();
+}
+
+static void release_pad_hold() {
+  // Held pads cannot be re-driven, so this must happen before anything
+  // reconfigures GPIO.
+  gpio_deep_sleep_hold_dis();
+  gpio_hold_dis(POWER_HOLD_PIN);
+}
+
+// ------------------------------------------------------------------ timing
+
+static const uint32_t POLL_PERIOD_S = 300;   // matches the CGM cadence
+// Per-attempt, not per-cycle. A successful association measures 1.2-1.6s on
+// this board, so 8s is generous; the old 25s was a single-network budget and
+// would dominate a cycle if spent on a network that simply is not there.
+static const uint32_t WIFI_ATTEMPT_MS = 8000;
+// Read timeout, once a connection exists. Stays generous: the proxy is
+// answering from its own cached copy and is never the slow part, but a weak
+// signal can stretch the read, and cutting a reply short costs a whole cycle.
+static const uint32_t HTTP_TIMEOUT_MS = 30000;
+// Connect timeout, kept SEPARATE and much shorter - it covers name
+// resolution plus the TCP handshake, both of which are local and fast.
+//
+// Measured on this board: a whole healthy fetch, resolution included, is
+// about 100ms. When the proxy is simply absent, though, connect() blocks for
+// this whole budget on every wake; at the old shared 30s that is ~35s awake
+// per cycle, near 3 hours a day, which turns a proxy outage into a flat
+// battery. 8s is 80x the normal case and caps the damage at about a third.
+//
+// Not lower: one cold boot was seen to take 16s before its first answer,
+// apparently a slow first mDNS resolution. That cycle would now be cut
+// short - a single missed reading after a power-on, which the next wake
+// retries 300s later, and a trade worth making against the outage cost.
+static const uint32_t HTTP_CONNECT_MS = 8000;
+
+// Below this, time() has never been set (the clock starts at 1970 on a cold
+// boot). 2020-09-13.
+static const time_t TIME_VALID_EPOCH = 1600000000;
+
+// ------------------------------------------------------------------ config
+
+
+static bool config_read(Config &c) {
+  Preferences p;
+  if (!p.begin("minimed", true)) {   // read-only
+    Serial.println("config: no NVS namespace");
+    return false;
+  }
+  // Slot 0 keeps the pre-multi-SSID key names, so an existing device needs
+  // no reconfiguration; slots 1-2 are optional extras.
+  c.wifi[0].ssid = p.getString("wifissid", "");
+  c.wifi[0].pass = p.getString("wifipass", "");
+  c.wifi[1].ssid = p.getString("ssid1", "");
+  c.wifi[1].pass = p.getString("pass1", "");
+  c.wifi[2].ssid = p.getString("ssid2", "");
+  c.wifi[2].pass = p.getString("pass2", "");
+  c.proxyaddr = p.getString("proxyaddr", "");
+  c.ntpserver = p.getString("ntpserver", "pool.ntp.org");
+  c.patient   = p.getString("patient", "");
+  c.proxyport = p.getUShort("proxyport", 8081);
+  c.timezone  = p.getInt("timezone", DEFAULT_TIMEZONE);
+  p.end();
+  // Patient name is deliberately NOT required: the proxy reports firstName,
+  // so a device never told a name still shows the right one.
+  bool any_wifi = false;
+  for (int i = 0; i < WIFI_SLOTS; i++) any_wifi |= c.wifi[i].usable();
+  return any_wifi && c.proxyaddr.length();
+}
+
+// ------------------------------------------------------------------- state
+
+
+// --------------------------------------------------------------- http/time
+
+static const char *HTTP_MONTHS = "JanFebMarAprMayJunJulAugSepOctNovDec";
+
+// "Fri, 04 Sep 2026 06:14:14 GMT" -> epoch UTC, or 0.
+//
+// This is where the clock comes from. RFC 7231 fixes the format and the
+// proxy is a Python BaseHTTP server which emits exactly it, but anything
+// unexpected returns 0 rather than a guess: a confidently wrong clock would
+// silently corrupt "Updated N min ago", the number that tells a caregiver
+// whether to trust what is on screen.
+static time_t parse_http_date(const String &value) {
+  char mon[4] = {0};
+  int day, year, hh, mm, ss;
+  char wd[8] = {0};
+  // e.g. "Fri, 04 Sep 2026 06:14:14 GMT"
+  if (sscanf(value.c_str(), "%7[^,], %d %3s %d %d:%d:%d",
+             wd, &day, mon, &year, &hh, &mm, &ss) != 7) {
+    return 0;
+  }
+  const char *pos = strstr(HTTP_MONTHS, mon);
+  if (!pos) return 0;
+  struct tm t = {};
+  t.tm_mday = day;
+  t.tm_mon  = (pos - HTTP_MONTHS) / 3;
+  t.tm_year = year - 1900;
+  t.tm_hour = hh;
+  t.tm_min  = mm;
+  t.tm_sec  = ss;
+  // TZ is pinned to UTC in setup(), so mktime() is a UTC conversion. The
+  // display applies the configured offset separately, as main.py does.
+  return mktime(&t);
+}
+
+static void set_clock(time_t epoch) {
+  struct timeval tv = { .tv_sec = epoch, .tv_usec = 0 };
+  settimeofday(&tv, nullptr);
+}
+
+// Raw client rather than HTTPClient, for the same reason main_m5coreink.py
+// hand-rolls the request: an unattended monitor needs a hard upper bound on
+// how long a cycle can block, and the Date header has to be readable.
+// ------------------------------------------------------------- proxy address
+//
+// IPv4 only. NetworkManager::hostByName asks for IPv6 FIRST once the board
+// has a global IPv6 address, the Pi answered carelink-home.local with one, and the
+// proxy listens on IPv4 only - so such cycles took up to 9 s or burned the
+// 8 s connect timeout and failed. Three in a row read "No link to proxy"
+// until a cold boot, which has no IPv6 address yet, cleared it.
+//
+// And looked up once, then remembered across deep sleep; looked up again
+// only when the remembered address stops answering. The lookup is mDNS -
+// multicast, which WiFi does not retransmit - so even IPv4-only it took
+// 2.2 s once (a microwave was running on the same 2.4 GHz band). A proxy is
+// a Pi on a cable whose DHCP lease rarely changes, so the lookup is almost
+// never needed. The cache is keyed by the configured name, so a changed
+// setting cannot reuse an address that belonged to the old one.
+static const uint32_t LOOKUP_BUDGET_MS = 20000;   // retries for a lost mDNS answer
+// While the other WiFi plan is still untried, a failing lookup is more likely
+// a network that keeps its clients apart than a lost multicast, and the other
+// plan is the better retry: so a short budget, and no "Looking for the proxy"
+// on the panel, which would otherwise flash up on every hourly plan A probe.
+static const uint32_t LOOKUP_BUDGET_SHORT_MS = 6000;
+static uint32_t lookup_budget_ms = LOOKUP_BUDGET_MS;
+static bool lookup_quiet = false;
+
+RTC_DATA_ATTR static uint32_t proxy_ip_cached;    // network byte order; 0 = none
+RTC_DATA_ATTR static uint32_t proxy_name_crc;
+
+// 1 = poison the cache on the first warm wake, to exercise the path that
+// finds a proxy which moved. Test builds only.
+#ifndef DEBUG_STALE_PROXY
+#define DEBUG_STALE_PROXY 0
+#endif
+
+static void show_status(const char *msg);   // the panel, defined further down
+
+static uint32_t name_crc(const String &name) {
+  return esp_rom_crc32_le(0, (const uint8_t *)name.c_str(), name.length());
+}
+
+static bool cache_valid(const Config &c) {
+  return proxy_ip_cached && proxy_name_crc == name_crc(c.proxyaddr);
+}
+
+static bool lookup_ipv4(const char *name, uint32_t &ip) {
+  struct addrinfo hints = {};
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_STREAM;
+  struct addrinfo *res = nullptr;
+  if (lwip_getaddrinfo(name, "0", &hints, &res) != 0 || !res) return false;
+  ip = ((struct sockaddr_in *)res->ai_addr)->sin_addr.s_addr;
+  lwip_freeaddrinfo(res);
+  return true;
+}
+
+static void show_looking(const Config &c) {
+  String msg = "Looking for the proxy\n" + c.proxyaddr + "\nThis can take 20 seconds";
+  show_status(msg.c_str());
+}
+
+// fresh = ignore the cache. Retries within the budget, and puts a message on
+// the panel once it has to retry (unless the caller already did), rather
+// than leaving it white for the whole wait.
+static bool proxy_address(const Config &c, bool fresh, bool shown, IPAddress &ip) {
+  if (ip.fromString(c.proxyaddr)) return true;   // a literal address: nothing to look up
+  if (!fresh && cache_valid(c)) {
+    ip = IPAddress(proxy_ip_cached);
+    return true;
+  }
+  uint32_t t0 = millis();
+  for (int tries = 1; ; tries++) {
+    uint32_t raw;
+    if (lookup_ipv4(c.proxyaddr.c_str(), raw)) {
+      proxy_ip_cached = raw;
+      proxy_name_crc = name_crc(c.proxyaddr);
+      ip = IPAddress(raw);
+      Serial.printf("proxy: %s is %s (lookup %u ms, %d tries)\n", c.proxyaddr.c_str(),
+                    ip.toString().c_str(), (unsigned)(millis() - t0), tries);
+      return true;
+    }
+    if (millis() - t0 >= lookup_budget_ms) break;
+    if (!shown && !lookup_quiet) {
+      show_looking(c);
+      shown = true;
+    }
+    delay(500);
+  }
+  Serial.printf("proxy: lookup of %s failed after %u ms\n", c.proxyaddr.c_str(),
+                (unsigned)(millis() - t0));
+  proxy_ip_cached = 0;
+  return false;
+}
+
+static bool http_get_at(const Config &c, const IPAddress &ip, const char *path,
+                        String &body, int &status, time_t &server_epoch);
+
+// Connects to the remembered address; if nothing answers there, looks the
+// name up again and tries once more - which is how a proxy that moved to a
+// new address is found without a reboot.
+static bool http_get(const Config &c, const char *path,
+                     String &body, int &status, time_t &server_epoch) {
+  status = 0;
+  server_epoch = 0;
+#if DEBUG_STALE_PROXY
+  static bool poisoned = false;
+  if (!poisoned && cache_valid(c) && esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER) {
+    poisoned = true;
+    proxy_ip_cached = IPAddress(192, 168, 1, 250);
+    Serial.println("proxy: DEBUG cache poisoned with 192.168.1.250");
+  }
+#endif
+  IPAddress ip;
+  bool was_cached = cache_valid(c);
+  if (!proxy_address(c, false, false, ip)) return false;
+  if (http_get_at(c, ip, path, body, status, server_epoch)) return true;
+  // Something answered, or the address was just looked up: a new lookup
+  // would find the same thing.
+  if (status != 0 || !was_cached) return false;
+  Serial.printf("proxy: %s not answering, looking %s up again\n",
+                ip.toString().c_str(), c.proxyaddr.c_str());
+  if (!lookup_quiet) show_looking(c);
+  if (!proxy_address(c, true, true, ip)) return false;
+  return http_get_at(c, ip, path, body, status, server_epoch);
+}
+
+static bool http_get_at(const Config &c, const IPAddress &ip, const char *path,
+                        String &body, int &status, time_t &server_epoch) {
+  status = 0;
+  server_epoch = 0;
+  WiFiClient client;
+  // MILLISECONDS. NetworkClient does not override setTimeout, so this is
+  // Stream::setTimeout, whose own header says "maximum milliseconds to wait
+  // for stream data". Dividing by 1000 here - as this did - set a 30ms read
+  // timeout, which passed unnoticed for weeks because the proxy answered
+  // inside 30ms over ethernet at close range, and then failed every cycle at
+  // -82dBm: connect succeeds, the status line reads back empty, and the
+  // cycle is lost with only "status 0" to show for it.
+  client.setTimeout(HTTP_TIMEOUT_MS);
+  uint32_t t_connect = millis();
+  if (!client.connect(ip, c.proxyport, HTTP_CONNECT_MS)) {
+    Serial.printf("fetch: connect failed after %u ms\n",
+                  (unsigned)(millis() - t_connect));
+    return false;
+  }
+  client.printf("GET /%s HTTP/1.0\r\nHost: %s\r\nConnection: close\r\n\r\n",
+                path, c.proxyaddr.c_str());
+
+  uint32_t deadline = millis() + HTTP_TIMEOUT_MS;
+  uint32_t t_date = 0;   // when the Date header arrived
+  // Status line
+  String line = client.readStringUntil('\n');
+  if (sscanf(line.c_str(), "HTTP/%*d.%*d %d", &status) != 1) status = 0;
+  // Headers, until the blank line. "Or available": a small reply arrives
+  // whole and the proxy closes at once, so connected() is already false
+  // while the headers sit unread in the buffer. Testing connected() alone
+  // stopped after the first header and left the rest in the body - found on
+  // the 62-byte /carelink/fallback reply, which arrived as 133 bytes of
+  // "Date: ... Content-type: ... {json}". nohistory never showed it because
+  // the proxy is still sending when the headers are read.
+  while ((client.connected() || client.available()) && millis() < deadline) {
+    line = client.readStringUntil('\n');
+    line.trim();
+    if (line.length() == 0) break;
+    if (line.startsWith("Date:") || line.startsWith("date:")) {
+      server_epoch = parse_http_date(line.substring(5));
+      t_date = millis();
+    }
+  }
+  body = "";
+  body.reserve(4096);
+  while (client.connected() && millis() < deadline) {
+    while (client.available()) body += (char)client.read();
+    if (!client.available() && !client.connected()) break;
+    delay(1);
+  }
+  while (client.available()) body += (char)client.read();
+  client.stop();
+  // The Date header is the server's time when the reply STARTED; the clock is
+  // set after the whole body is in. Add what the transfer took, or a slow
+  // fetch sets the clock that far back - 19.8 s on one fetch put it 17 s
+  // behind, and the RTC chip with it.
+  if (server_epoch) server_epoch += (millis() - t_date + 500) / 1000;
+  return status == 200;
+}
+
+// -------------------------------------------------------------------- wifi
+//
+// Several networks may be configured - typically home plus a phone hotspot
+// for a demo on location. Trying them in turn would be ruinous: a network
+// that is simply absent costs the whole attempt timeout before the next is
+// tried, on EVERY wake at whichever site is listed second.
+//
+// So the last network that worked is remembered in RTC memory and tried
+// first, with its channel and BSSID as a hint so WiFi.begin() can skip
+// hunting for the access point. In the steady state that is one attempt, no
+// scan, and no more expensive than the single-network build. Only when the
+// surroundings actually change is a scan paid, once, and then the new
+// network becomes the remembered one.
+
+static bool try_connect(const WifiNet &net, int32_t channel, const uint8_t *bssid) {
+  WiFi.disconnect(false, false);   // never erase the stored AP config
+  WiFi.mode(WIFI_STA);
+  if (channel > 0 && bssid) WiFi.begin(net.ssid.c_str(), net.pass.c_str(), channel, bssid);
+  else                      WiFi.begin(net.ssid.c_str(), net.pass.c_str());
+  uint32_t deadline = millis() + WIFI_ATTEMPT_MS;
+  while (WiFi.status() != WL_CONNECTED && millis() < deadline) delay(50);
+  return WiFi.status() == WL_CONNECTED;
+}
+
+// Plan A and plan B.
+//
+// The last slot is not a third ordinary network but the FALLBACK: the Pi's
+// own hotspot (carelink-travel), which it runs alongside its normal WiFi
+// connection. Plan A is the ordinary networks, slots 0 and 1. The fallback is
+// only used when plan A does not work - absent, refusing us, or (the case it
+// exists for) joined fine but with the proxy unreachable, as on a holiday
+// network that keeps its clients apart. Measured 2026-11-02 on such a
+// network: joins in 3 s, every proxy lookup fails.
+//
+// Once on plan B the board stays there, since retrying plan A every wake
+// would cost the isolation timeout every 5 minutes, but tries plan A again
+// every PLAN_A_RETRY_CYCLES so it does go back once the normal network works.
+static const int FALLBACK_SLOT = WIFI_SLOTS - 1;
+// One hour at 300 s. Overridable so a test build can show the return in
+// minutes: -DPLAN_A_RETRY_CYCLES=2 via compiler.cpp.extra_flags.
+#ifndef PLAN_A_RETRY_CYCLES
+#define PLAN_A_RETRY_CYCLES 12
+#endif
+
+static bool is_fallback(int slot) { return slot == FALLBACK_SLOT; }
+
+// Does this plan have anything configured at all? Saves a scan for nothing.
+static bool plan_usable(const Config &c, bool fallback) {
+  for (int sl = 0; sl < WIFI_SLOTS; sl++)
+    if (is_fallback(sl) == fallback && c.wifi[sl].usable()) return true;
+  return false;
+}
+
+// Considers only the slots of one plan (fallback = plan B). The caller
+// records what worked into the RTC fields. Returns the slot index, or -1.
+static int wifi_connect(const Config &c, bool fallback, int remembered_slot,
+                        int32_t remembered_channel, const uint8_t *remembered_bssid) {
+  if (!plan_usable(c, fallback)) return -1;
+  // 1. The network that worked last time, with the AP hint.
+  if (remembered_slot >= 0 && remembered_slot < WIFI_SLOTS &&
+      is_fallback(remembered_slot) == fallback &&
+      c.wifi[remembered_slot].usable()) {
+    bool hinted = remembered_channel > 0;
+    if (try_connect(c.wifi[remembered_slot], remembered_channel,
+                    hinted ? remembered_bssid : nullptr)) {
+      Serial.printf("wifi: slot %d (%s)%s\n", remembered_slot,
+                    c.wifi[remembered_slot].ssid.c_str(),
+                    hinted ? ", cached AP" : "");
+      return remembered_slot;
+    }
+    Serial.printf("wifi: slot %d (%s) did not answer, scanning\n",
+                  remembered_slot, c.wifi[remembered_slot].ssid.c_str());
+  }
+
+  // 2. Scan, then try only networks actually in range, strongest first.
+  //    Scanning beats trying-in-turn because it never waits out a timeout on
+  //    a network that is not there at all.
+  // The radio must be idle first: after a failed association it is still
+  // trying, and scanNetworks() then returns -2 (SCAN_FAILED) without looking
+  // at anything - which made the whole fallback silently useless.
+  WiFi.disconnect(false, false);
+  delay(100);
+  int found = WiFi.scanNetworks();
+  if (found < 0) {          // -1 running, -2 failed: let it settle, once
+    Serial.printf("wifi: scan returned %d, retrying\n", found);
+    WiFi.scanDelete();
+    delay(500);
+    found = WiFi.scanNetworks();
+  }
+  if (found < 0) found = 0;
+  int best_slot = -1, best_rssi = -1000, best_idx = -1;
+  for (int i = 0; i < found; i++) {
+    for (int sl = 0; sl < WIFI_SLOTS; sl++) {
+      if (is_fallback(sl) != fallback) continue;
+      if (!c.wifi[sl].usable() || WiFi.SSID(i) != c.wifi[sl].ssid) continue;
+      if (WiFi.RSSI(i) > best_rssi) {
+        best_rssi = WiFi.RSSI(i); best_slot = sl; best_idx = i;
+      }
+    }
+  }
+  if (best_slot < 0) {
+    Serial.printf("wifi: no plan %c network in range (%d seen)\n",
+                  fallback ? 'B' : 'A', found);
+    WiFi.scanDelete();
+    return -1;
+  }
+  int32_t ch = WiFi.channel(best_idx);
+  uint8_t bssid[6];
+  memcpy(bssid, WiFi.BSSID(best_idx), 6);
+  Serial.printf("wifi: scan picked slot %d (%s) rssi %d ch %d\n",
+                best_slot, c.wifi[best_slot].ssid.c_str(), best_rssi, (int)ch);
+  WiFi.scanDelete();
+
+  // The caller records the channel and BSSID from the live connection, which
+  // is authoritative; nothing is written back here.
+  return try_connect(c.wifi[best_slot], ch, bssid) ? best_slot : -1;
+}
+
+// ------------------------------------------------------------------ alarms
+//
+// Deliberately no cross-cycle dedup bookkeeping: re-announcing an alarm that
+// is still recent is the CORRECT behaviour for an ambient monitor, not
+// something to suppress. Every wake re-runs this from scratch.
+
+static const uint32_t ALARM_RECENCY_S = 15 * 60;
+
+// "yyyy-mm-ddThh:mm:ss.000-00:00" -> epoch, parsed with no timezone
+// awareness at all. See get_alarm_text() for why that is what we want.
+static time_t parse_alarm_datetime(const char *str) {
+  struct tm t = {};
+  if (!str || sscanf(str, "%d-%d-%dT%d:%d:%d", &t.tm_year, &t.tm_mon,
+                     &t.tm_mday, &t.tm_hour, &t.tm_min, &t.tm_sec) != 6) {
+    return 0;
+  }
+  t.tm_year -= 1900;
+  t.tm_mon  -= 1;
+  return mktime(&t);   // TZ is pinned to UTC, so this is a naive conversion
+}
+
+// Fills s.alarm_text / s.alarm_local for a still-recent AND still-current
+// alarm, else leaves them empty.
+//
+// Unlike lastConduitUpdateServerDateTime (a true UTC epoch in ms),
+// lastAlarm.dateTime's digits are ALREADY local wall-clock time - confirmed
+// on hardware, where displaying them with a further offset added showed a
+// time 2 hours ahead of the real CEST clock. So the parsed value is right
+// for DISPLAY as-is, but comparing it against a true-UTC now() inflates the
+// recency window by the whole offset: a glucose alarm would linger ~2h15m
+// instead of 15 minutes. Shift it back by the offset for the comparison,
+// display the original.
+static void resolve_alarm(JsonVariantConst lastAlarm, const Config &c, State &s) {
+  if (lastAlarm.isNull()) return;
+  const char *dt = lastAlarm["dateTime"] | "";
+  time_t naive_local = parse_alarm_datetime(dt);
+  // A parse failure returns 0 and must never be mistaken for a recent alarm,
+  // which here would also mean a spurious beep.
+  if (!naive_local) return;
+
+  time_t offset = (time_t)(c.timezone + s.dstDelta) * 3600;
+  time_t utc = naive_local - offset;
+  if (utc <= time(nullptr) - (time_t)ALARM_RECENCY_S) return;
+
+  const char *fault_id = lastAlarm["faultId"] | "";
+  if (!fault_id[0]) return;
+  const char *canon = fault_canonical(fault_id);
+
+  // A low/high glucose notification goes stale the moment the reading
+  // recovers - showing it then would be worse than showing nothing.
+  if (s.sg > 0) {
+    if (fault_is_low_glucose(canon)  && s.sg > HYPO_THRESHOLD_MGDL)  return;
+    if (fault_is_high_glucose(canon) && s.sg < HYPER_THRESHOLD_MGDL) return;
+  }
+
+  fault_str(fault_id, s.alarm_text, sizeof(s.alarm_text));
+  s.alarm_local = naive_local;
+}
+
+// ------------------------------------------------------------------ buzzer
+
+static const int BUZZER_FREQ_HZ = 2000;   // near the resonant peak of a piezo this size
+static const int BUZZER_MS      = 400;    // long enough to carry from another room
+
+static void beep() {
+  M5.Speaker.begin();
+  M5.Speaker.setVolume(255);
+  M5.Speaker.tone(BUZZER_FREQ_HZ, BUZZER_MS);
+  // tone() queues the sound and returns immediately, so the beep must be
+  // waited out: without this the deep sleep at the end of the cycle cuts
+  // power to the speaker mid-note and the alarm is inaudible - a silent
+  // failure that looks entirely fine in the logs.
+  uint32_t deadline = millis() + BUZZER_MS + 500;
+  while (M5.Speaker.isPlaying() && (int32_t)(deadline - millis()) > 0) delay(20);
+  delay(50);
+}
+
+// ----------------------------------------------------------------- polling
+
+// Asks the proxy's own status page why it is empty, and returns true if it
+// says a login is needed.
+//
+// Only ever called when the data response was already empty, so it costs
+// nothing in the normal case. Worth the extra round trip there because the
+// two empty cases call for opposite responses: a proxy still starting up
+// fixes itself within a minute, while an expired token needs a person to go
+// and solve a CAPTCHA, and will otherwise sit dead for days.
+static bool proxy_wants_login(const Config &c) {
+  String page;
+  int status = 0;
+  time_t ignored = 0;
+  if (!http_get(c, "", page, status, ignored)) return false;
+  // The status string the proxy renders into its own page; matching on it is
+  // safe because this is our proxy, not a third party's API.
+  return page.indexOf("Valid token required") >= 0;
+}
+
+// The fallback (slot 2, plan B) learned from the proxy, so nobody has to type
+// the Pi hotspot's 24-character random password into a phone. The proxy
+// serves it at /carelink/fallback when its Pi runs the hotspot, and 404
+// when it does not (a stay-at-home Pi). The proxy is authoritative for slot 2 when it
+// offers one - slot 2 means "the Pi's hotspot" - and a re-provisioned Pi's
+// new password reaches the display at home instead of failing on a trip.
+// Slots 0 and 1 are never touched. The password is never logged.
+//
+// Returns true when the question was answered (learned, unchanged, or "none
+// here"), so the caller can wait a day before asking again; false to retry
+// next cycle.
+static const uint16_t FALLBACK_CHECK_CYCLES = 288;   // once a day at 300 s
+
+static bool learn_fallback(const Config &c) {
+  String body;
+  int status = 0;
+  time_t ignored = 0;
+  if (!http_get(c, "carelink/fallback", body, status, ignored)) {
+    if (status == 404) {
+      Serial.println("fallback: the proxy offers none");
+      return true;
+    }
+    Serial.printf("fallback: no answer from the proxy (status %d)\n", status);
+    return false;
+  }
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, body);
+  if (err || !doc.is<JsonObject>()) {
+    // Never the body itself: a readable one would carry the password.
+    Serial.printf("fallback: unreadable answer (%s, %u bytes), ignored\n",
+                  err ? err.c_str() : "not an object", (unsigned)body.length());
+    return true;
+  }
+  const char *ssid = doc["ssid"] | "";
+  const char *psk  = doc["psk"]  | "";
+  size_t sl = strlen(ssid), pl = strlen(psk);
+  if (sl < 1 || sl > 32 || pl < 8 || pl > 63) {   // what WPA2-PSK allows
+    Serial.println("fallback: answer is not a usable network, ignored");
+    return true;
+  }
+  const WifiNet &cur = c.wifi[FALLBACK_SLOT];
+  if (cur.ssid == ssid && cur.pass == psk) {
+    Serial.printf("fallback: '%s' already known\n", ssid);
+    return true;
+  }
+  Preferences p;
+  if (!p.begin("minimed", false)) {
+    Serial.println("fallback: could not open NVS");
+    return false;
+  }
+  p.putString("ssid2", ssid);
+  p.putString("pass2", psk);
+  p.end();
+  if (!cur.ssid.length())        Serial.printf("fallback: learned '%s' from the proxy\n", ssid);
+  else if (cur.ssid == ssid)     Serial.printf("fallback: new password for '%s' from the proxy\n", ssid);
+  else                           Serial.printf("fallback: '%s' replaced by '%s' from the proxy\n",
+                                               cur.ssid.c_str(), ssid);
+  return true;
+}
+
+// Mirrors handle_pumpdataupdate(). Returns false if there is no usable data;
+// the caller draws "no data" rather than treating it as fatal.
+static bool fetch_pump_data(const Config &c, State &s) {
+  String body;
+  int status = 0;
+  time_t server_epoch = 0;
+  if (!http_get(c, "carelink/nohistory", body, status, server_epoch)) {
+    Serial.printf("fetch: status %d\n", status);
+    s.link = LINK_NO_PROXY;
+    return false;
+  }
+
+  // Set the clock BEFORE parsing: alarm handling compares alarm times
+  // against now, and on a cold boot this is the first correct clock the
+  // device has had.
+  if (server_epoch) {
+    long drift = (long)(server_epoch - time(nullptr));
+    s.clockFix = (int32_t)drift;
+    set_clock(server_epoch);
+    if (labs(drift) >= 2) {
+      Serial.printf("clock corrected from proxy by %+ld s\n", drift);
+      // Write it to the BM8563 as well. M5.begin() sets the system clock
+      // from that chip on EVERY boot, deep-sleep wakes included
+      // (M5Unified.cpp, setSystemTimeFromRtc), and nothing ever set the chip:
+      // it had drifted ~100 s, and every wake started that far off until
+      // this correction - toggle wakes, which never fetch, stayed off. UTC,
+      // which is how setSystemTimeFromRtc() reads it back.
+      if (M5.Rtc.isEnabled()) {
+        struct tm utc;
+        gmtime_r(&server_epoch, &utc);
+        M5.Rtc.setDateTime(&utc);
+      }
+    }
+  }
+
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, body);
+
+  // Getting here means the proxy ANSWERED, so whatever the body says this is
+  // not a link failure. A proxy holding no data sends the bare JSON string ""
+  // (measured: 200, 2 bytes) - and ArduinoJson rejects that outright as
+  // InvalidInput rather than parsing it as a root-level string, which is not
+  // what the first version of this assumed. So a parse failure and a
+  // non-object body are one condition here, and nothing is made to depend on
+  // which way the parser happens to treat "".
+  //
+  // That empty answer is how an expired token used to reach the panel as a
+  // plain "---", indistinguishable from the pump being out of range.
+  if (err || !doc.is<JsonObject>()) {
+    s.link = proxy_wants_login(c) ? LINK_PROXY_LOGIN : LINK_PROXY_NO_DATA;
+    Serial.printf("fetch: proxy answered with no usable data (%s; %s)\n",
+                  err ? err.c_str() : "not an object",
+                  s.link == LINK_PROXY_LOGIN ? "needs login" : "no reason given");
+    // TRUE on purpose: the empty state must replace the snapshot, so the
+    // panel stops showing a reading the proxy can no longer stand behind.
+    return true;
+  }
+
+  s.haveData = doc["conduitInRange"] | false;
+  s.haveData = s.haveData && (doc["conduitMedicalDeviceInRange"] | false);
+
+  if (s.haveData) {
+    s.batteryPct     = doc["pumpBatteryLevelPercent"] | -1;
+    s.reservoirUnits = doc["reservoirRemainingUnits"] | -1.0f;
+    s.reservoirPct   = doc["reservoirLevelPercent"]   | -1;
+    s.sageHours      = doc["sensorDurationHours"]     | 255;
+    strlcpy(s.sensorState, doc["sensorState"] | "", sizeof(s.sensorState));
+    s.activeInsulin  = doc["activeInsulin"]["amount"] | -1.0f;
+    const char *trend = doc["lastSGTrend"] | "NONE";
+    // Trend is only meaningful with auto mode on, same rule as main.py.
+    const char *shield = doc["therapyAlgorithmState"]["autoModeShieldState"] | "FEATURE_OFF";
+    strlcpy(s.trend, strcmp(shield, "FEATURE_OFF") ? trend : "NONE", sizeof(s.trend));
+  }
+  strlcpy(s.patient, doc["firstName"] | "", sizeof(s.patient));
+
+  // Which hop of pump -> phone -> CareLink is broken, for the Communication
+  // screen. Absent fields stay -1 rather than reading as "out of range".
+  if (doc["conduitMedicalDeviceInRange"].is<bool>())
+    s.pumpInRange = doc["conduitMedicalDeviceInRange"].as<bool>() ? 1 : 0;
+  if (doc["conduitInRange"].is<bool>())
+    s.phoneInRange = doc["conduitInRange"].as<bool>() ? 1 : 0;
+
+  int sg = doc["lastSG"]["sg"] | 0;
+  s.sg = sg > 0 ? sg : 0;
+
+  // INTEGER division, not floating point. This bit the MicroPython builds on
+  // both boards: the value is Unix ms (~1.79e12) and a float32 mantissa only
+  // resolves ~64s there, so int(ms/1000) decoded 11:51:00 as 11:50:56 and
+  // reported "5 min ago" for a 4-minute-old reading. C++ doubles would cope,
+  // but integer division is what the value actually means.
+  int64_t ms = doc["lastConduitUpdateServerDateTime"] | (int64_t)0;
+  if (ms > 0) s.lastUpdate = (time_t)(ms / 1000);
+
+  const char *tzname = doc["clientTimeZoneName"] | "";
+  s.dstDelta = strcasestr(tzname, "summer") ? 1 : 0;
+
+  // systemStatusMessage is the generic line; a pump delivery banner
+  // (suspend / bg-required / etc.) overrides it when both are set.
+  const char *sysmsg = doc["systemStatusMessage"] | "";
+  if (sysmsg[0] && strcmp(sysmsg, "NO_ERROR_MESSAGE") != 0) {
+    strlcpy(s.banner, sysmsg, sizeof(s.banner));
+  }
+  const char *pump_banner = doc["pumpBannerState"][0]["type"] | "";
+  if (pump_banner[0]) {
+    strlcpy(s.banner, pump_banner, sizeof(s.banner));
+  }
+  for (char *p = s.banner; *p; p++) if (*p == '_') *p = ' ';
+
+  // After sg, because the glucose-recovered checks need it.
+  resolve_alarm(doc["lastAlarm"], c, s);
+
+  s.timeInRange = doc["timeInRange"]      | -1;
+  s.aboveHyper  = doc["aboveHyperLimit"]  | -1;
+  s.belowHypo   = doc["belowHypoLimit"]   | -1;
+  s.averageSG   = doc["averageSG"]        | -1;
+
+  // The proxy is healthy and answering with real data; if there is still no
+  // reading, the gap is upstream of it - pump out of range of the phone, or
+  // the phone offline. Routine, self-clearing, and NOT the same problem as
+  // any of the states above.
+  s.link = s.sg > 0 ? LINK_OK : LINK_NO_SENSOR;
+
+  return true;
+}
+
+// What the last battery decision was actually made on. File scope because
+// dump_state() reports it and refresh_battery() sets it, and they sit at
+// opposite ends of this file.
+static int last_batt_mv = -1;
+
+static void dump_state(const State &s, const Config &c) {
+  char when[32] = "-";
+  if (s.lastUpdate) {
+    struct tm tm;
+    gmtime_r(&s.lastUpdate, &tm);
+    strftime(when, sizeof(when), "%Y-%m-%d %H:%M:%S", &tm);
+  }
+  static const char *LINK_NAMES[] = {
+    "ok", "no sensor data", "proxy has no data", "proxy needs login", "no proxy"
+  };
+  Serial.println("---- state ----");
+  Serial.printf("  link          %s\n", LINK_NAMES[s.link]);
+  // Device battery, not the pump's. The panel shows only three coarse steps,
+  // and only when nothing else occupies that strip, so the log is the only
+  // place the actual level is visible.
+  //
+  // Voltage AND the library percentage: the display keys off the millivolts
+  // (see BATTERY_FULL_MV), and the percentage rides along only so the two can
+  // be compared while a real discharge curve is gathered for this cell.
+  // The mV the step was decided on, NOT a fresh sample: re-reading here
+  // printed a different median from the one that made the decision, which
+  // made the log look self-contradictory at exactly the boundary where it
+  // matters most.
+  Serial.printf("  device batt   %d mV (lib says %d%%), step %d\n",
+                last_batt_mv, (int)M5.Power.getBatteryLevel(), s.battState);
+  Serial.printf("  last good sg  %d mg/dL\n", s.lastGoodSg);
+  Serial.printf("  haveData      %d\n", (int)s.haveData);
+  Serial.printf("  sg            %d mg/dL   trend %s\n", s.sg, s.trend);
+  Serial.printf("  activeInsulin %.1f U\n", s.activeInsulin);
+  Serial.printf("  reservoir     %.1f U (%d%%)\n", s.reservoirUnits, s.reservoirPct);
+  Serial.printf("  sensor        %d h   state %s\n", s.sageHours, s.sensorState);
+  Serial.printf("  pump battery  %d%%\n", s.batteryPct);
+  Serial.printf("  patient       %s (config: %s)\n", s.patient, c.patient.c_str());
+  Serial.printf("  lastUpdate    %s UTC\n", when);
+  if (s.lastUpdate && time(nullptr) > TIME_VALID_EPOCH)
+    Serial.printf("  reading age   %ld s%s\n", (long)(time(nullptr) - s.lastUpdate),
+                  time(nullptr) - s.lastUpdate >= 20 * 60 ? "  -> stale banner" : "");
+  Serial.printf("  banner        '%s'\n", s.banner);
+  Serial.printf("  comms         pump-phone %d  phone-cloud %d  proxy %d  streak %u  ip %s\n",
+                s.pumpInRange, s.phoneInRange, s.rawLink, (unsigned)s.failStreak,
+                s.proxyIp[0] ? s.proxyIp : "-");
+  Serial.printf("  alarm         '%s'\n", s.alarm_text);
+  Serial.printf("  dstDelta      %d\n", s.dstDelta);
+  Serial.printf("  stats         inRange %d  above %d  below %d  avgSG %d\n",
+                s.timeInRange, s.aboveHyper, s.belowHypo, s.averageSG);
+  Serial.println("---------------");
+}
+
+// ----------------------------------------------------------------- display
+
+// 1 = overwrite the fetched state with synthetic values, to exercise the
+// layout deterministically instead of waiting on whatever the pump happens
+// to be doing. Leave at 0 for real use.
+#define LAYOUT_TEST 0
+
+// 1 = compose the main screen once per LINK_* state and report where the ink
+// landed. The link states are otherwise unreachable on demand: a dead token
+// cannot be conjured without breaking a live monitor, so without this the
+// banner would first be seen during an actual outage. Leave at 0 for real use.
+#define LINK_TEST 0
+
+// 1 = after WiFi connects, serve the setup portal over the existing
+// connection so it can be driven from a laptop without wiping a working
+// device's config. Never leave this on.
+#define PORTAL_TEST 0
+
+// 1 = start the real AP portal on every boot even when configured, and store
+// nothing on save (the AP password is logged to serial instead). Tests the
+// scan, the network test and the result page without wiping a working
+// device. Set with -DPORTAL_AP_TEST=1 via compiler.cpp.extra_flags.
+#ifndef PORTAL_AP_TEST
+#define PORTAL_AP_TEST 0
+#endif
+
+// 1 = dump the composed canvas to serial as ASCII, 4x4 pixels per character.
+// This board has no REPL and no screenshots, so without it the only way to
+// check a layout is to ask a human to look at the panel. Costs nothing when
+// off.
+#define DEBUG_ASCII 0
+
+#if DEBUG_ASCII
+// The MicroPython build's layout constants were tuned against ITS font
+// metrics, recorded in comments there (DejaVu72 50px, DejaVu24 26px,
+// DejaVu18 20px, DejaVu12 16px, DejaVu40 at 2x measuring 86px tall and 140px
+// wide for three digits). If M5GFX reports different numbers to C++, every
+// screen coordinate derived from them moves.
+static void dump_font_metrics(M5Canvas &c) {
+  struct { const char *name; const lgfx::IFont *f; float size; } fs[] = {
+    {"DejaVu72   ", &fonts::DejaVu72, 1.0f},
+    {"DejaVu40x2 ", &fonts::DejaVu40, 2.0f},
+    {"DejaVu24   ", &fonts::DejaVu24, 1.0f},
+    {"DejaVu18   ", &fonts::DejaVu18, 1.0f},
+    {"DejaVu12   ", &fonts::DejaVu12, 1.0f},
+  };
+  Serial.println("---- font metrics ----");
+  for (auto &e : fs) {
+    c.setFont(e.f);
+    c.setTextSize(e.size);
+    Serial.printf("  %s height %3d   w(\"160\") %3d   w(\"Suspend\") %3d\n",
+                  e.name, c.fontHeight(), c.textWidth("160"), c.textWidth("Suspend"));
+  }
+  c.setTextSize(1.0f);
+  Serial.println("----------------------");
+}
+
+static void dump_canvas_ascii(M5Canvas &canvas) {
+  Serial.println("---- canvas 200x200, 4x4 px per char ----");
+  for (int y = 0; y < PANEL_H; y += 4) {
+    char row[PANEL_W / 4 + 1];
+    int n = 0;
+    for (int x = 0; x < PANEL_W; x += 4) {
+      // 4bpp greyscale: 0 is black, 15 white. MAJORITY of the 4x4 block, not
+      // "any dark pixel": on a reverse-video bar every block contains black,
+      // so an any-dark rule renders the whole bar solid and hides the white
+      // text inside it - which had me hunting a drawing bug that was really
+      // a bug in this dump.
+      int dark = 0;
+      for (int dy = 0; dy < 4; dy++)
+        for (int dx = 0; dx < 4; dx++)
+          if (canvas.readPixel(x + dx, y + dy) < 8) dark++;
+      row[n++] = (dark >= 8) ? '#' : '.';
+    }
+    row[n] = 0;
+    Serial.println(row);
+  }
+  Serial.println("----------------------------------------");
+  // Per-row white-pixel counts for the bottom strip. ASCII thresholding is
+  // hopeless for 1-2px strokes on a reverse-video bar; a count is not.
+  Serial.println("bottom strip, white px per row:");
+  for (int y = PANEL_H - 40; y < PANEL_H; y++) {
+    int white = 0;
+    for (int x = 0; x < PANEL_W; x++) if (canvas.readPixel(x, y) >= 8) white++;
+    Serial.printf("  y=%3d  %3d\n", y, white);
+  }
+}
+#endif
+
+// Every screen is composed off-screen and pushed in ONE operation. This is
+// not an optimisation: M5GFX drives this e-paper panel on each individual
+// drawing call, so a screen built from a few dozen primitives triggers a few
+// dozen panel updates. Measured on the MicroPython build, drawing straight
+// to the panel took 7.7s for this screen against ~30ms composed.
+static void compose(int screen, const State &s, const Config &c,
+                    bool full_refresh, time_t session_start) {
+  M5.Display.setEpdMode(full_refresh ? epd_mode_t::epd_quality
+                                     : epd_mode_t::epd_fast);
+  M5Canvas canvas(&M5.Display);
+  canvas.setColorDepth(CANVAS_BPP);
+  if (canvas.createSprite(PANEL_W, PANEL_H)) {
+    draw_current_screen(canvas, screen, s, c, session_start);
+#if DEBUG_ASCII
+    dump_font_metrics(canvas);
+    dump_canvas_ascii(canvas);
+#endif
+    canvas.pushSprite(0, 0);
+    canvas.deleteSprite();
+  } else {
+    // Should not happen here - this build has ~275KB free where MicroPython
+    // had a ~55KB largest block - but a slow screen beats a blank one.
+    Serial.println("canvas allocation failed, drawing direct");
+    draw_current_screen(M5.Display, screen, s, c, session_start);
+  }
+}
+
+// ---------------------------------------------------------------- toggle
+//
+// Three-position switch: G37 up, G39 down, G38 press. Both
+// directions advance a screen, which needs BOTH of the ESP32's GPIO wake
+// sources - ext0 takes a single pin, ext1 a mask, and one alone cannot cover
+// two pins that must each wake on a low level.
+
+static const gpio_num_t BTN_UP_PIN   = GPIO_NUM_37;
+static const gpio_num_t BTN_DOWN_PIN = GPIO_NUM_39;
+// Pressing the switch in. Used for one thing only - the configuration wipe
+// on the info screen - and deliberately NOT armed as a wake source: ext1 on
+// this chip can only wake on ALL of its pins low, so it cannot share with
+// the down pin, and the wipe is reached from an open session anyway.
+static const gpio_num_t BTN_PRESS_PIN = GPIO_NUM_38;
+
+// How long the switch must be held in on the info screen to offer the wipe.
+// Long enough that nobody gets there by fidgeting with the switch.
+static const uint32_t WIPE_HOLD_MS = 5000;
+// How long the dialog waits for an answer before taking it as No.
+static const uint32_t WIPE_DIALOG_MS = 15000;
+
+// How long to stay awake after a press, watching for another. Waking costs
+// ~1.2s of boot before any of this runs, so a run of flicks should redraw at
+// panel speed rather than pay that each time. 15s is really "how long may
+// someone think before the device gives up on them".
+static const uint32_t TOGGLE_AWAKE_MS = 15000;
+
+// There is deliberately NO equivalent window after a scheduled refresh. A
+// poll runs ~283 times a day whether or not anybody is there; measured on
+// the MicroPython build, such a window was over half the awake time in every
+// cycle. Nothing is lost but latency on the first flick after a refresh,
+// because the toggle still wakes the board out of deep sleep.
+
+// Bounds that exist purely so no switch fault can keep the device awake. A
+// held, wedged or chattering contact must degrade to "the screens stop
+// responding until the next scheduled wake", never to "the monitor stops
+// polling", which is indistinguishable from a dead device.
+static const uint32_t TOGGLE_SESSION_MAX_MS = 180000;
+static const uint32_t TOGGLE_RELEASE_MAX_MS = 3000;
+static const uint32_t TOGGLE_DEBOUNCE_MS    = 120;
+
+// Presses are latched by an interrupt rather than discovered by polling: a
+// panel redraw blocks for a noticeable fraction of a second, and a flick
+// that landed during one would simply be lost - the device feeling like it
+// ignores the switch exactly when someone is clicking through it fastest.
+static volatile bool toggle_latch = false;
+// Which way the last press asked to go. Both pins used to share one handler
+// and every press advanced +1, so flicking up walked FORWARD through the
+// screens exactly like flicking down - there was no way back, only the long
+// way round.
+static volatile int toggle_latched_dir = SCREEN_FORWARD;
+
+static void IRAM_ATTR toggle_isr_up() {
+  toggle_latch = true;
+  toggle_latched_dir = SCREEN_BACK;
+}
+
+static void IRAM_ATTR toggle_isr_down() {
+  toggle_latch = true;
+  toggle_latched_dir = SCREEN_FORWARD;
+}
+
+static void install_toggle_irq() {
+  pinMode(BTN_UP_PIN, INPUT);
+  pinMode(BTN_DOWN_PIN, INPUT);
+  pinMode(BTN_PRESS_PIN, INPUT);
+  attachInterrupt(digitalPinToInterrupt(BTN_UP_PIN), toggle_isr_up, FALLING);
+  attachInterrupt(digitalPinToInterrupt(BTN_DOWN_PIN), toggle_isr_down, FALLING);
+}
+
+// Active low; every pin reads 1 at rest, confirmed by probing.
+static bool toggle_pressed() {
+  return digitalRead(BTN_UP_PIN) == LOW || digitalRead(BTN_DOWN_PIN) == LOW;
+}
+
+// Direction of whichever pin is down right now, for the fallback path that
+// works off the level rather than the latch. 0 = nothing held.
+static int toggle_dir_now() {
+  if (digitalRead(BTN_UP_PIN) == LOW)   return SCREEN_BACK;
+  if (digitalRead(BTN_DOWN_PIN) == LOW) return SCREEN_FORWARD;
+  return 0;
+}
+
+// True if the switch has been operated since the last call, held or not.
+static bool toggle_take() {
+  if (!toggle_latch) return false;
+  toggle_latch = false;
+  return true;
+}
+
+// Wraps in both directions: a bare % would leave -1 as -1 and index off the
+// front of the screen list.
+static int screen_step(int screen, int dir) {
+  return (screen + dir + SCREEN_COUNT) % SCREEN_COUNT;
+}
+
+static void arm_toggle_wake() {
+  // A pin that is ALREADY low must not be armed. These wake sources are
+  // level-triggered, not edge-triggered, so arming a pin held down makes
+  // deep sleep return immediately, every time: the device would spin through
+  // wake/redraw/sleep as fast as it can boot, never reaching its next poll
+  // and flattening the battery in hours. That is what a switch resting
+  // off-centre, or a contact failed to ground, looks like. Skipping the
+  // stuck pin costs that one direction until it is released; the other
+  // direction and the timer keep working.
+  if (digitalRead(BTN_UP_PIN) == HIGH) {
+    esp_sleep_enable_ext0_wakeup(BTN_UP_PIN, 0);
+  } else {
+    Serial.printf("GPIO%d held low, not arming ext0\n", (int)BTN_UP_PIN);
+  }
+  if (digitalRead(BTN_DOWN_PIN) == HIGH) {
+    esp_sleep_enable_ext1_wakeup(1ULL << BTN_DOWN_PIN, ESP_EXT1_WAKEUP_ALL_LOW);
+  } else {
+    Serial.printf("GPIO%d held low, not arming ext1\n", (int)BTN_DOWN_PIN);
+  }
+}
+
+// ------------------------------------------------------------- rtc state
+//
+// RTC_DATA_ATTR survives deep sleep and is re-initialised on every other
+// reset - which is exactly the semantics wanted here, and the same as the
+// MicroPython build's RTC memory: a cold boot must start with no snapshot
+// rather than a stale one. (It is NOT the place for anything that has to
+// outlive a crash; see the reboot counter in the phase 0 notes.)
+//
+// A plain struct, where MicroPython had to serialise JSON in and out of RTC
+// memory and re-hydrate it - about 120 lines that simply do not exist here.
+#define RTC_MAGIC 0x4D4D030Cu   // bump when the layout changes (gained fallback_age)
+
+struct RtcState {
+  uint32_t magic;
+  int      screen;
+  time_t   next_poll;
+  time_t   session_start;   // for the runtime counter on the info screen
+  uint32_t cycle;
+  // Which network worked last, and where its access point was. Remembering
+  // the slot is what keeps multi-SSID free in the steady state; remembering
+  // the channel and BSSID lets WiFi.begin() skip scanning for the AP.
+  int      wifi_slot;
+  int32_t  wifi_channel;
+  uint8_t  wifi_bssid[6];
+  uint8_t  fail_streak;     // consecutive cycles that produced no reading
+  uint8_t  planb_cycles;    // poll cycles spent on the fallback since plan A was last tried
+  uint16_t fallback_age;    // poll cycles since the proxy was last asked for the fallback; 0 = not yet
+  State    snap;
+};
+
+RTC_DATA_ATTR RtcState rtc;
+
+// How many consecutive bad cycles before the panel says anything about it.
+//
+// This device is slow background information - a glimpse when following up on
+// someone - and the pump and the patient's own phone are what anyone acts on.
+// So a single missed cycle is not news, and announcing one is worse than
+// useless: it raises an alarming banner for something that fixes itself
+// before anybody walks past the screen. Three cycles is about 15 minutes,
+// which is under the "No data" threshold the Updated row already uses.
+static const uint8_t LINK_FAULT_STREAK = 3;
+
+static void note_link(int link) {
+  if (link == LINK_OK) rtc.fail_streak = 0;
+  else if (rtc.fail_streak < 255) rtc.fail_streak++;
+}
+
+static bool link_fault_confirmed() { return rtc.fail_streak >= LINK_FAULT_STREAK; }
+
+// How often a scheduled refresh uses the slow full-clear waveform. The flash
+// is not required on every wake - the fast waveform writes the same image -
+// but ghosting is: fast waveforms leave a residue that accumulates into a
+// permanent shadow on a display redrawing the same shapes all day.
+//
+// EVERY scheduled draw, not every 12th as in the MicroPython build. That
+// build could afford 12 because UIFlow's firmware reset and cleared the
+// panel on every wake anyway; without that free clear, 11 consecutive fast
+// refreshes plus any toggle redraws ghost the panel badly. Measured cost of
+// the quality waveform: ~360ms against ~180ms for fast, once per 5 minutes.
+static const uint32_t FULL_REFRESH_EVERY = 1;
+
+// -------------------------------------------------------------------- main
+
+static void sleep_until(time_t next_poll) {
+  // Sleep only until the next poll is actually due, rather than a fresh full
+  // period. Without this every toggle press would push the next reading out
+  // by another 5 minutes, so someone idly flicking through the screens could
+  // starve the data this device exists to show.
+  int32_t remaining = POLL_PERIOD_S;
+  if (next_poll) remaining = (int32_t)(next_poll - time(nullptr));
+  if (remaining < 5) remaining = 5;
+  else if (remaining > (int32_t)POLL_PERIOD_S) remaining = POLL_PERIOD_S;
+
+  arm_toggle_wake();
+  // Panel down, pads latched, then sleep - the order matters; see
+  // docs/coreink-micropython-notes.md.
+  M5.Display.powerSaveOn();
+  gpio_hold_en(POWER_HOLD_PIN);
+  gpio_deep_sleep_hold_en();
+  Serial.printf("sleeping %d s (awake %d ms)\n",
+                (int)remaining, (int)(esp_timer_get_time() / 1000));
+  Serial.flush();
+  esp_deep_sleep((uint64_t)remaining * 1000000ULL);
+}
+
+static bool press_down() { return digitalRead(BTN_PRESS_PIN) == LOW; }
+
+// Waits, bounded, for the press pin to come back up. False if it never did.
+static bool wait_press_release(uint32_t max_ms = TOGGLE_RELEASE_MAX_MS) {
+  uint32_t release_by = millis() + max_ms;
+  while (press_down() && (int32_t)(release_by - millis()) > 0) delay(10);
+  return !press_down();
+}
+
+// Composed off-screen and pushed once, for the reason given at compose().
+static void show_wipe(bool yes, const char *msg, bool full_refresh) {
+  M5.Display.setEpdMode(full_refresh ? epd_mode_t::epd_quality
+                                     : epd_mode_t::epd_fast);
+  M5Canvas canvas(&M5.Display);
+  canvas.setColorDepth(CANVAS_BPP);
+  bool sprite = canvas.createSprite(PANEL_W, PANEL_H);
+  LovyanGFX &g = sprite ? (LovyanGFX &)canvas : (LovyanGFX &)M5.Display;
+  if (msg) draw_status_screen(g, msg);
+  else     draw_wipe_dialog(g, yes);
+  if (sprite) {
+    canvas.pushSprite(0, 0);
+    canvas.deleteSprite();
+  }
+}
+
+// Erase the stored configuration and restart, which lands in the setup
+// portal because config_read() then finds nothing. This is the only way to
+// correct a configuration short of a USB cable: once a board is configured
+// the portal never comes back on its own, so a mistyped proxy name would
+// otherwise strand it.
+static void wipe_and_restart() {
+  Preferences p;
+  p.begin("minimed", false);
+  bool ok = p.clear();
+  p.end();
+  Serial.printf("wipe: configuration %s\n", ok ? "erased" : "ERASE FAILED");
+  // The RTC snapshot survives a software restart. Drop it too, or the next
+  // configuration - possibly another patient's, in another house - would
+  // start out showing this one's last reading.
+  rtc.magic = 0;
+  show_wipe(false, ok ? "Configuration wiped\nRestarting in setup mode ..."
+                       : "Wipe FAILED\nRestarting ...", true);
+  delay(2000);
+  esp_restart();
+}
+
+static void show_status(const char *msg) { show_wipe(false, msg, true); }
+
+// The confirmation dialog. Default No; up selects No, down selects Yes, and
+// a press confirms whichever is selected. Silence is No. Returns only when
+// the answer was No - Yes does not return.
+static void run_wipe_dialog() {
+  Serial.println("wipe: dialog open");
+  bool yes = false;
+  // Drawn BEFORE waiting for the release: the dialog appearing is the only
+  // sign the hold was long enough, so people keep holding until they see it.
+  // Waiting for the release first - with the switch's usual 3s bound - meant
+  // a natural hold timed out and cancelled with nothing ever shown.
+  show_wipe(yes, nullptr, true);
+  // The hold that opened the dialog must not also answer it.
+  if (!wait_press_release(WIPE_DIALOG_MS)) {
+    Serial.println("wipe: press never released - cancelled");
+    return;
+  }
+  delay(TOGGLE_DEBOUNCE_MS);
+  toggle_take();
+  uint32_t deadline = millis() + WIPE_DIALOG_MS;
+  while ((int32_t)(deadline - millis()) > 0) {
+    if (press_down()) {
+      delay(TOGGLE_DEBOUNCE_MS);
+      if (press_down()) {
+        Serial.printf("wipe: answered %s\n", yes ? "Yes" : "No");
+        if (yes) wipe_and_restart();
+        wait_press_release();
+        return;
+      }
+    }
+    bool latched = toggle_take();
+    int dir = latched ? toggle_latched_dir : toggle_dir_now();
+    if (latched || dir != 0) {
+      bool want = (dir == SCREEN_FORWARD);
+      uint32_t release_by = millis() + TOGGLE_RELEASE_MAX_MS;
+      while (toggle_pressed() && (int32_t)(release_by - millis()) > 0) delay(10);
+      delay(TOGGLE_DEBOUNCE_MS);
+      toggle_take();
+      if (want != yes) {
+        yes = want;
+        show_wipe(yes, nullptr, false);
+      }
+      deadline = millis() + WIPE_DIALOG_MS;
+    }
+    delay(10);
+  }
+  Serial.println("wipe: no answer - cancelled");
+}
+
+// Returns the screen left on display. Each press advances one screen and
+// restarts the window, so a conversation with the device never drops back to
+// sleep mid-flick.
+static int run_toggle_session(int screen, const State &s, const Config &c,
+                              time_t session_start) {
+  install_toggle_irq();
+  toggle_take();   // discard the press that woke us; already accounted for
+  uint32_t deadline  = millis() + TOGGLE_AWAKE_MS;
+  uint32_t hard_stop = millis() + TOGGLE_SESSION_MAX_MS;
+  // A separate flag rather than press_since == 0 as "not held": the old
+  // `millis() | 1` sentinel put the start 1 ms in the FUTURE on an even
+  // millisecond, the unsigned elapsed time then wrapped to ~4e9, and the
+  // dialog opened on a brief push.
+  bool     holding = false;
+  uint32_t press_since = 0;
+  // The hold has to START on the info screen. Counting any time the press
+  // reads low there let a hold begun on another screen - carried across by
+  // flicking with the switch still pushed in - open the dialog on arrival.
+  // So the press only counts once it has been seen released on this screen.
+  bool press_armed = false;
+
+  while ((int32_t)(deadline - millis()) > 0 &&
+         (int32_t)(hard_stop - millis()) > 0) {
+    // Holding the switch in on the info screen offers the wipe. Only there:
+    // it is the screen that shows the configuration being thrown away.
+    bool down = press_down();
+    if (screen != SCREEN_INFO) press_armed = false;
+    else if (!down)            press_armed = true;
+    if (screen == SCREEN_INFO && down && press_armed) {
+      // One unbroken press, nothing else. The switch can be rocked up or
+      // down while still pushed in, so any flick during the hold restarts
+      // it - and, by disarming, demands a release before a new hold counts.
+      // The flick itself is left latched for the code below to act on.
+      if (toggle_latch || toggle_pressed()) {
+        if (holding) Serial.printf("wipe: hold reset by flick after %u ms\n",
+                                   (unsigned)(millis() - press_since));
+        holding = false;
+        press_armed = false;
+        continue;
+      }
+      if (!holding) {
+        holding = true;
+        press_since = millis();
+        Serial.println("wipe: hold started");
+      }
+      deadline = millis() + TOGGLE_AWAKE_MS;
+      if (millis() - press_since >= WIPE_HOLD_MS) {
+        run_wipe_dialog();   // returns only on No
+        holding = false;
+        press_armed = false;   // re-arms once the switch is seen released
+        toggle_take();
+        refresh_battery();
+        compose(screen, s, c, true, session_start);
+        deadline = millis() + TOGGLE_AWAKE_MS;
+      }
+      delay(10);
+      continue;
+    }
+    if (holding) {
+      // Released early. Whatever the up/down contacts did while the switch
+      // was pushed in is not a flick; discard it.
+      Serial.printf("wipe: hold released after %u ms\n",
+                    (unsigned)(millis() - press_since));
+      holding = false;
+      delay(TOGGLE_DEBOUNCE_MS);
+      toggle_take();
+      continue;
+    }
+    bool latched = toggle_take();
+    // Read the level FIRST when there is no latch: by the time the pin is
+    // sampled after a redraw the switch may already be back at rest, and the
+    // latched direction is then the only record of which way it went.
+    int dir = latched ? toggle_latched_dir : toggle_dir_now();
+    if (latched || dir != 0) {
+      if (dir == 0) dir = SCREEN_FORWARD;
+      screen = screen_step(screen, dir);
+
+      // Wait for release BEFORE drawing, so holding the switch does not
+      // queue a second advance. BOUNDED: a stuck-low pin must not park the
+      // device here forever.
+      uint32_t release_by = millis() + TOGGLE_RELEASE_MAX_MS;
+      while (toggle_pressed() && (int32_t)(release_by - millis()) > 0) delay(10);
+      // Only a release wait that TIMED OUT means the switch is genuinely
+      // stuck. Testing the pin after the redraw instead - as this did - is
+      // wrong: the release above already happened, so a pin that is low
+      // again is somebody's NEXT flick, not this one still held.
+      bool stuck = toggle_pressed();
+
+      // Settle here, before drawing, and clear the latch on this side of the
+      // redraw. Bounce from the press just handled is discarded now, which
+      // means anything latched DURING compose() below is a genuinely new
+      // flick and must survive to advance the next screen.
+      delay(TOGGLE_DEBOUNCE_MS);
+      toggle_take();
+
+      uint32_t t_draw = millis();
+      refresh_battery();
+      compose(screen, s, c, false, session_start);
+      uint32_t draw_ms = millis() - t_draw;
+
+      if (stuck) {
+        // Held, resting off-centre, or a failed contact. Advancing on a
+        // level rather than an edge would spin through the screens for as
+        // long as it stays there, so end the session. arm_toggle_wake()
+        // will also decline to arm this pin.
+        Serial.printf("toggle still held after %u ms - ending session\n",
+                      TOGGLE_RELEASE_MAX_MS);
+        break;
+      }
+      // The redraw is the window in which a fast flick can land; log it so
+      // the size of that window is never again a matter of guesswork. The
+      // direction rides along so a mis-ordered walk can be read off the log.
+      Serial.printf("toggle: %s -> screen %d, redraw %u ms\n",
+                    dir == SCREEN_BACK ? "back" : "fwd", screen, draw_ms);
+      deadline = millis() + TOGGLE_AWAKE_MS;
+    }
+    delay(10);
+  }
+  return screen;
+}
+
+
+// Refresh the battery step just before drawing. Sampling here rather than
+// inside the draw keeps it on the one code path that is guaranteed to be
+// after the radio is down, and gives the hysteresis a previous value to be
+// sticky against.
+static void refresh_battery(void) {
+  int mv = battery_mv();
+  if (mv <= 0) return;
+  last_batt_mv = mv;
+  rtc.snap.battState = battery_state(mv, rtc.snap.battState);
+}
+
+// The Communication screen's fields, copied into the snapshot on every poll -
+// including the ones that are not adopted, which are exactly the polls the
+// screen exists to explain.
+static void carry_comms(State &dst, const State &src) {
+  dst.pumpInRange  = src.pumpInRange;
+  dst.phoneInRange = src.phoneInRange;
+  dst.rawLink      = src.rawLink;
+  dst.failStreak   = src.failStreak;
+  dst.fetchMs      = src.fetchMs;
+  dst.wifiMs       = src.wifiMs;
+  dst.clockFix     = src.clockFix;
+  dst.lastAttempt  = src.lastAttempt;
+  dst.lastFetchOk  = src.lastFetchOk;
+  memcpy(dst.proxyIp, src.proxyIp, sizeof(dst.proxyIp));
+}
+
+void setup() {
+  release_pad_hold();
+  Serial.begin(115200);
+
+  // Pin the runtime to UTC so mktime()/localtime() are UTC conversions; the
+  // configured offset is applied only when drawing, as main.py does.
+  setenv("TZ", "UTC0", 1);
+  tzset();
+
+  esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+  bool woke_on_toggle = (cause == ESP_SLEEP_WAKEUP_EXT0 ||
+                         cause == ESP_SLEEP_WAKEUP_EXT1);
+  bool cold_boot = (rtc.magic != RTC_MAGIC);
+  if (cold_boot) {
+    memset(&rtc, 0, sizeof(rtc));
+    state_init(rtc.snap);
+    rtc.magic = RTC_MAGIC;
+    rtc.screen = SCREEN_MAIN;
+  }
+
+  Serial.printf("\ncoreink: power hold at %lld us, reset %d, wake %d, cold %d, cycle %u\n",
+                power_hold_us, (int)esp_reset_reason(), (int)cause,
+                (int)cold_boot, rtc.cycle);
+  // What the toggle path would draw from. If this reads empty on a wake, the
+  // secondary screens show "--" and the cause is the snapshot, not the fetch.
+  Serial.printf("snapshot: sg=%d insulin=%.1f resv=%.1f sensor=%d batt=%d ip=%s\n",
+                rtc.snap.sg, rtc.snap.activeInsulin, rtc.snap.reservoirUnits,
+                rtc.snap.sageHours, rtc.snap.batteryPct,
+                rtc.snap.ip[0] ? rtc.snap.ip : "(none)");
+
+  auto mcfg = M5.config();
+  // TRUE, where main_m5coreink.py sets it False - and this is the single
+  // biggest behavioural difference the port turned up.
+  //
+  // Under UIFlow, the FIRMWARE ran its own M5.begin() with default config on
+  // every boot, so the panel was reset and re-initialised each wake for
+  // free; the app's False only suppressed a second, redundant clear. Here
+  // this is the only M5.begin() there is.
+  //
+  // The flag does NOT control the panel reset or init - those happen either
+  // way; in M5Unified it gates exactly one thing, Display.clear(). What that
+  // buys is a known starting image: the whole panel driven white through a
+  // full waveform, which scrubs residue and leaves the controller's old-image
+  // buffer (0x10) matching what is physically on the glass, so the next draw
+  // transitions cleanly from white.
+  //
+  // Without it, residue accumulates until a changed screen is unreadable.
+  // Waveform choice does not substitute: tried on hardware, both the quality
+  // two-pass on every draw and a black/white conditioning flush on cold boot,
+  // and the panel stayed ghosted. Only the per-wake clear fixed it.
+  //
+  // Costs ~1.9s per wake (measured 2.35s -> 4.27s). Still well under the
+  // MicroPython build's 5.26s, and correctness first.
+  mcfg.clear_display = true;
+  M5.begin(mcfg);
+  M5.Display.powerSaveOff();
+
+  Config cfg;
+#if PORTAL_AP_TEST
+  config_read(cfg);
+  Serial.println("PORTAL_AP_TEST - starting setup portal, nothing will be stored");
+  run_config_portal(cfg, true);
+#endif
+  if (!config_read(cfg)) {
+    // Falls through to AP setup rather than sleeping: appropriate here,
+    // because an unconfigured device is one somebody is standing in front
+    // of. A WiFi FAILURE later does NOT come here - that would strand a
+    // working monitor in setup mode over a transient hiccup.
+    Serial.println("config incomplete - starting setup portal");
+    run_config_portal(cfg);   // never returns; reboots when saved
+  }
+
+  // --- Toggle wake: redraw from the cached snapshot and go back to sleep.
+  // Deliberately does NOT touch the network. Bringing up WiFi and fetching
+  // would add seconds between the flick and the screen changing, and none of
+  // the screens gains from data a few minutes fresher; the scheduled poll is
+  // what keeps it current.
+  if (woke_on_toggle && !cold_boot) {
+    // The first step of a session comes from the WAKE CAUSE, not from the
+    // pins: the interrupt handler is not installed yet, and by the time the
+    // levels are sampled the switch has usually sprung back. ext0 is armed on
+    // the up pin and ext1 on the down pin, so the cause alone says which way
+    // the flick went - which is the whole reason they were armed separately.
+    int dir = (cause == ESP_SLEEP_WAKEUP_EXT0) ? SCREEN_BACK : SCREEN_FORWARD;
+    rtc.screen = screen_step(rtc.screen, dir);
+    Serial.printf("toggle wake: %s -> screen %d\n",
+                  dir == SCREEN_BACK ? "back" : "fwd", rtc.screen);
+    refresh_battery();
+    compose(rtc.screen, rtc.snap, cfg, false, rtc.session_start);
+    rtc.screen = run_toggle_session(rtc.screen, rtc.snap, cfg, rtc.session_start);
+    sleep_until(rtc.next_poll);   // does not return
+  }
+
+  // --- Scheduled poll. Always returns to the main screen: it is the view
+  // this device exists for, and the only one that shows the alarm banner.
+  rtc.screen = SCREEN_MAIN;
+
+  int64_t t_wifi = esp_timer_get_time();
+  int32_t ch = rtc.wifi_channel;
+  uint8_t bssid[6];
+  memcpy(bssid, rtc.wifi_bssid, 6);
+  // Plan A first - unless already on plan B and the hourly retry of plan A is
+  // not due, in which case B first: it is what worked last time.
+  const bool retry_a = is_fallback(rtc.wifi_slot) &&
+                       rtc.planb_cycles >= PLAN_A_RETRY_CYCLES;
+  const bool b_first = is_fallback(rtc.wifi_slot) && !retry_a;
+  if (retry_a) Serial.println("wifi: an hour on plan B, trying plan A again");
+  int slot = wifi_connect(cfg, b_first, rtc.wifi_slot, ch, bssid);
+  // Whether the other plan is still there to fall back to, this cycle.
+  bool other_left = plan_usable(cfg, !b_first);
+  if (slot < 0 && other_left) {
+    slot = wifi_connect(cfg, !b_first, rtc.wifi_slot, ch, bssid);
+    other_left = false;
+  }
+  int64_t wifi_ms = (esp_timer_get_time() - t_wifi) / 1000;
+
+  if (slot < 0) {
+    // A transient WiFi failure skips this cycle rather than being fatal; the
+    // next wake tries again. It must NEVER fall through to AP setup mode -
+    // that would strand a working monitor over a hiccup.
+    Serial.printf("wifi: failed after %lld ms, skipping cycle\n", wifi_ms);
+    note_link(LINK_NO_PROXY);
+    if (link_fault_confirmed()) rtc.snap.link = LINK_NO_PROXY;
+    rtc.snap.rawLink = LINK_NO_PROXY;
+    rtc.snap.failStreak = rtc.fail_streak;
+    rtc.snap.wifiMs = 0;
+    rtc.snap.fetchMs = 0;
+    if (time(nullptr) > TIME_VALID_EPOCH) rtc.snap.lastAttempt = time(nullptr);
+    // BOTH of these lines are load-bearing, and their absence is what turned
+    // one flaky cycle into a blank panel that "recovered by itself".
+    //
+    // next_poll: it was never advanced here, so it stayed in the past and
+    // sleep_until() clamped to its 5s floor - the board then woke every few
+    // seconds to fail again, at ~4s awake a time, which is a battery fire
+    // rather than a skipped cycle.
+    //
+    // compose(): M5.begin() has ALREADY cleared the panel to white by this
+    // point, so returning to sleep without drawing leaves the screen blank
+    // until some later cycle succeeds. The snapshot is still there and is
+    // still the best information anyone has - draw it.
+    rtc.next_poll = time(nullptr) + POLL_PERIOD_S;
+    refresh_battery();
+    compose(SCREEN_MAIN, rtc.snap, cfg, (rtc.cycle % FULL_REFRESH_EVERY) == 0,
+            rtc.session_start);
+    rtc.cycle++;
+    sleep_until(rtc.next_poll);
+  }
+  String local_ip;
+  int wifi_rssi = 0;
+  // Remember what worked, so the next wake is one attempt and no scan.
+  auto note_wifi = [&](int sl) {
+    // Another network: the proxy's address there is another one too (the Pi
+    // is 10.43.0.1 on its hotspot, something else on the house LAN), so the
+    // cached one would only cost a connect timeout before the lookup.
+    if (sl != rtc.wifi_slot) proxy_ip_cached = 0;
+    rtc.wifi_slot = sl;
+    rtc.wifi_channel = WiFi.channel();
+    if (WiFi.BSSID()) memcpy(rtc.wifi_bssid, WiFi.BSSID(), 6);
+    // Captured NOW, while the radio is still up. Read after WiFi.mode(WIFI_OFF)
+    // it comes back 0.0.0.0, which is what the info screen was showing.
+    local_ip = WiFi.localIP().toString();
+    wifi_rssi = WiFi.RSSI();   // read now: the radio goes down before the snapshot
+    // RSSI so a slow fetch can be told apart: board .14 took 19.8 s where .24,
+    // in the same spot, took 0.1 s, and nothing else in the log said why.
+    Serial.printf("wifi: connected in %lld ms, ip %s, ssid %s ch %d rssi %d (plan %c)\n",
+                  wifi_ms, local_ip.c_str(), WiFi.SSID().c_str(), (int)WiFi.channel(),
+                  wifi_rssi, is_fallback(sl) ? 'B' : 'A');
+  };
+  note_wifi(slot);
+
+#if PORTAL_TEST
+  run_config_portal_sta(cfg);   // blocks; reboots when a config is submitted
+#endif
+
+  State s;
+  state_init(s);
+  int64_t t_fetch = esp_timer_get_time();
+  lookup_budget_ms = other_left ? LOOKUP_BUDGET_SHORT_MS : LOOKUP_BUDGET_MS;
+  lookup_quiet = other_left;
+  bool ok = fetch_pump_data(cfg, s);
+  // Joined, but nothing answered: the network may keep its clients apart.
+  // Only LINK_NO_PROXY - a proxy that answered, even with nothing, is
+  // reachable, and switching networks would not change what it says.
+  if (s.link == LINK_NO_PROXY && other_left) {
+    Serial.printf("fetch: no proxy via %s, switching to plan %c\n",
+                  cfg.wifi[slot].ssid.c_str(), is_fallback(slot) ? 'A' : 'B');
+    int64_t t_switch = esp_timer_get_time();
+    int other = wifi_connect(cfg, !is_fallback(slot), -1, 0, nullptr);
+    wifi_ms += (esp_timer_get_time() - t_switch) / 1000;
+    if (other >= 0) {
+      slot = other;
+      note_wifi(slot);
+      lookup_budget_ms = LOOKUP_BUDGET_MS;
+      lookup_quiet = false;
+      state_init(s);
+      ok = fetch_pump_data(cfg, s);
+    }
+  }
+  // Counts toward the hourly plan A retry; a cycle that just made it starts over.
+  rtc.planb_cycles = (is_fallback(slot) && !retry_a) ? rtc.planb_cycles + 1 : 0;
+  int64_t fetch_ms = (esp_timer_get_time() - t_fetch) / 1000;
+  Serial.printf("fetch+parse: %lld ms, ok=%d\n", fetch_ms, (int)ok);
+  s.fetchMs = (uint16_t)(fetch_ms > 65535 ? 65535 : fetch_ms);
+  s.wifiMs  = (uint16_t)(wifi_ms > 65535 ? 65535 : (wifi_ms < 1 ? 1 : wifi_ms));
+  s.rawLink = s.link;
+  if (time(nullptr) > TIME_VALID_EPOCH) s.lastAttempt = time(nullptr);
+  if (proxy_ip_cached)
+    snprintf(s.proxyIp, sizeof(s.proxyIp), "%s", IPAddress(proxy_ip_cached).toString().c_str());
+
+  // Learn plan B from the proxy: after a cold boot, then once a day. Only
+  // over plan A, the household network, which is what the proxy trusts; and
+  // only after the proxy answered this cycle, so a dead proxy costs nothing.
+  if (ok && !is_fallback(slot) &&
+      (rtc.fallback_age == 0 || rtc.fallback_age >= FALLBACK_CHECK_CYCLES)) {
+    if (learn_fallback(cfg)) rtc.fallback_age = 1;
+  } else if (rtc.fallback_age && rtc.fallback_age < 0xFFFF) {
+    rtc.fallback_age++;
+  }
+
+  // The radio holds heap the canvas wants and costs current; down it goes
+  // before drawing.
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+
+  note_link(s.link);
+  const bool confirmed = link_fault_confirmed();
+  s.failStreak = rtc.fail_streak;
+  // An empty answer carries nothing worth adopting - no reading, no alarm,
+  // not even a patient name - so replacing the snapshot with it would throw
+  // away the last good reading over one blip. A fetch that DID return an
+  // object is adopted whatever its link state, because it may carry a fresh
+  // alarm, and an alarm must never wait three cycles.
+  const bool proxy_empty = (s.link == LINK_PROXY_NO_DATA || s.link == LINK_PROXY_LOGIN);
+  const bool adopt = ok && !proxy_empty;
+  // "A real answer": the proxy returned pump data, whatever its content.
+  s.lastFetchOk = (ok && !proxy_empty && s.lastAttempt) ? s.lastAttempt : rtc.snap.lastFetchOk;
+  if (!s.clockFix) s.clockFix = rtc.snap.clockFix;
+
+  // Say it before the field is cleared, or a building streak on an adopted
+  // cycle leaves no trace at all: dump_state() below would print "link ok"
+  // and the streak line further down only runs on the other branch.
+  if (s.link != LINK_OK) {
+    Serial.printf("link fault: %d (streak %u/%u)%s\n", s.link,
+                  (unsigned)rtc.fail_streak, (unsigned)LINK_FAULT_STREAK,
+                  confirmed ? "" : " - not announced yet");
+  }
+  if (adopt && !confirmed) s.link = LINK_OK;   // not announced until it repeats
+
+  if (adopt) {
+    // Carry the last real reading across the wholesale replace further down.
+    // The fetched state knows only what the proxy just said, so without this
+    // the moment sg goes to 0 the previous value is gone and the bracketed
+    // "what it was" on the main screen would vanish with it.
+    //
+    // Set BEFORE dump_state() so the log shows the value the panel will
+    // actually draw; computing it next to the assignment to rtc.snap printed
+    // a stale 0 on the very cycle it was being established.
+    s.lastGoodSg = s.sg > 0 ? s.sg : rtc.snap.lastGoodSg;
+    // Same trap as lastGoodSg: rtc.snap is replaced wholesale below, so
+    // without this the battery step resets to "no history" every cycle and
+    // the hysteresis has nothing to be sticky against.
+    //
+    // Sampled here, before dump_state(), so the log reports the step that
+    // will actually be drawn. The radio is already down by this point, which
+    // is the condition the reading needs. refresh_battery() runs again just
+    // before compose() on every path; a second median costs ~10ms and keeps
+    // the toggle redraws honest.
+    refresh_battery();
+    s.battState  = rtc.snap.battState;
+#if LAYOUT_TEST
+    // Fault table spot-check against the Python's answers, and a synthetic
+    // alarm so the banner and the buzzer are exercised without waiting for
+    // the pump to misbehave.
+    for (const char *id : {"002", "816", "802", "011", "999"}) {
+      char fb[80];
+      fault_str(id, fb, sizeof(fb));
+      Serial.printf("fault %-4s canonical=%-4s '%s'\n", id, fault_canonical(id), fb);
+    }
+    Serial.printf("low(802)=%d high(816)=%d low(011)=%d\n",
+                  (int)fault_is_low_glucose("802"),
+                  (int)fault_is_high_glucose("816"),
+                  (int)fault_is_low_glucose("011"));
+    fault_str("802", s.alarm_text, sizeof(s.alarm_text));
+    s.alarm_local = time(nullptr) + (time_t)(cfg.timezone + s.dstDelta) * 3600;
+    s.sg = 55;   // consistent with a low-glucose alarm
+    Serial.println("LAYOUT_TEST: synthetic alarm injected");
+#endif
+#if LAYOUT_TEST
+    // Compose every screen once. A screen that crashes reboots the board; a
+    // screen that renders blank passes a crash test but fails a person, so
+    // count the ink too.
+    snprintf(s.ip, sizeof(s.ip), "192.168.1.13");
+    for (int sc = 0; sc < SCREEN_COUNT; sc++) {
+      M5Canvas probe(&M5.Display);
+      probe.setColorDepth(CANVAS_BPP);
+      probe.createSprite(PANEL_W, PANEL_H);
+      draw_current_screen(probe, sc, s, cfg, time(nullptr) - 3600 * 37);
+      int ink = 0;
+      for (int y = 0; y < PANEL_H; y++)
+        for (int x = 0; x < PANEL_W; x++)
+          if (probe.readPixel(x, y) < 8) ink++;
+      Serial.printf("screen %d composed, ink %d px (%.1f%%)\n",
+                    sc, ink, 100.0 * ink / (PANEL_W * PANEL_H));
+      probe.deleteSprite();
+    }
+#endif
+#if LINK_TEST
+    // Ink in the bottom band is the signal that matters: a banner is what
+    // pushes the glucose figure into the smaller font and fills the strip
+    // that is otherwise empty. Counting total ink alone would not
+    // distinguish a rendered banner from a silently clipped one.
+    for (int lk = LINK_OK; lk <= LINK_NO_PROXY; lk++) {
+      State t = s;
+      t.link = lk;
+      t.sg = (lk == LINK_OK) ? 132 : 0;
+      t.alarm_text[0] = '\0';
+      t.banner[0] = '\0';
+      M5Canvas probe(&M5.Display);
+      probe.setColorDepth(CANVAS_BPP);
+      probe.createSprite(PANEL_W, PANEL_H);
+      draw_main_screen(probe, t, cfg);
+      int ink = 0, band = 0;
+      for (int y = 0; y < PANEL_H; y++)
+        for (int x = 0; x < PANEL_W; x++)
+          if (probe.readPixel(x, y) < 8) { ink++; if (y >= 150) band++; }
+      Serial.printf("link %d: ink %4d px, bottom band %4d px\n", lk, ink, band);
+      probe.deleteSprite();
+    }
+#endif
+    dump_state(s, cfg);
+    // Beep BEFORE the panel refresh, not after: the point of the sound is to
+    // summon someone who is not looking at the device, so it should not wait
+    // behind a redraw they are not watching anyway. One beep per cycle in
+    // which an alarm is showing - a still-active alarm beeping again next
+    // wake is intended, not a missing dedup.
+    if (s.alarm_text[0]) {
+      Serial.printf("alarm active, sounding buzzer: %s\n", s.alarm_text);
+      beep();
+    }
+    snprintf(s.ip, sizeof(s.ip), "%s", local_ip.c_str());
+    snprintf(s.ssid, sizeof(s.ssid), "%s", cfg.wifi[slot].ssid.c_str());
+    s.rssi = wifi_rssi;
+    rtc.snap = s;
+    // Anchor the cadence on the fetch, not on the wake, so the tail of the
+    // cycle never shifts the schedule.
+    rtc.next_poll = time(nullptr) + POLL_PERIOD_S;
+    if (!rtc.session_start && time(nullptr) > TIME_VALID_EPOCH) {
+      rtc.session_start = time(nullptr);
+    }
+  } else {
+    // The snapshot is deliberately kept - the last reading is still the best
+    // information anyone has - and it is stamped with why it stopped
+    // advancing ONLY once the fault has repeated. Without the stamp a proxy
+    // that has gone away leaves a stale number looking exactly like a current
+    // one; without the streak, one flaky cycle raises a banner that is gone
+    // again before anyone reads it.
+    if (confirmed) rtc.snap.link = s.link;
+    carry_comms(rtc.snap, s);
+    // The schedule has to advance on this path too, or sleep_until() falls to
+    // its 5s floor and the board spins.
+    rtc.next_poll = time(nullptr) + POLL_PERIOD_S;
+    // dump_state() only runs on the adopt path, so say it here too: otherwise
+    // the one cycle where something is actually wrong is the one cycle that
+    // reports nothing.
+    Serial.printf("no data this cycle (streak %u/%u), panel %s\n",
+                  (unsigned)rtc.fail_streak, (unsigned)LINK_FAULT_STREAK,
+                  confirmed ? "will name the fault" : "keeps the last reading, silently");
+  }
+
+  // Tested before the increment so cycle 0 - the first draw after a cold
+  // boot, which has the splash still on the panel to clear - is a full one.
+  refresh_battery();
+  compose(SCREEN_MAIN, rtc.snap, cfg, (rtc.cycle % FULL_REFRESH_EVERY) == 0,
+          rtc.session_start);
+  rtc.cycle++;
+
+  sleep_until(rtc.next_poll);
+}
+
+void loop() {
+  // Never reached: esp_deep_sleep() does not return.
+}

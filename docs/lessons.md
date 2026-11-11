@@ -1,0 +1,56 @@
+# Lessons
+
+Things that cost a day to find out. Each one looked like something else.
+
+## A mistyped WiFi name looks like a router that isolates its clients
+
+At a holiday house the display never reached the proxy, and the first
+conclusion was "this router keeps its clients apart". It did not. The display
+had been set up as `Seaview12` for a network called `seaview 12`; it never
+joined at all. That router does **not** isolate clients on 2.4 GHz.
+
+What changed because of it: the display's setup page now lists the networks it
+can see, warns when a typed name is close to a listed one ("did you mean
+`seaview 12`?"), and tests the connection before saving.
+
+Check the name, character by character, before blaming the network.
+
+## Phones capitalise form fields
+
+A phone keyboard turns `office` into `Office` by itself, and WiFi names and
+passwords are case-sensitive. A setup page should switch auto-capitalisation and
+auto-correct off on those fields (the display's page does; the Pi's setup
+page does not yet). Host names are harmless (`Carelink-01.local`
+resolves like `carelink-01.local`; mDNS ignores case).
+
+## A Pi 4 has one radio and one channel
+
+It can be one WiFi client and one access point at the same time, but only on
+one channel (`iw list`: `#{ managed } <= 1, #{ AP } <= 1, #channels <= 1`).
+The display is 2.4 GHz only. So a Pi connected on 5 GHz cannot serve the
+display a hotspot until it moves itself to 2.4 GHz. See
+[travel.md](travel.md).
+
+## A Core Ink that is off looks exactly like one that has locked up
+
+E-paper keeps its last image with no power, so a board that has switched off
+shows a plausible, stale reading. On battery the button on the back is a bare
+reset line and switches the board *off*: a chip held in reset cannot drive the
+pin that latches the power rail on. Hold the PWR button, or plug in USB, to
+bring it back. The firmware's README has the measurements ("Power hold, from
+reset").
+
+## A weak USB port passes every test except WiFi
+
+A marginal supply cannot source the radio's power-up inrush. Flashing and the
+serial console draw almost nothing, so everything works until the radio
+starts, and then the board resets — in a loop, on the splash screen, looking
+like a software hang. Watch the serial console across a reset: repeated
+`POWERON_RESET` is the supply, not the code.
+
+## NetworkManager gives up on a network after one bad handshake
+
+On a headless Pi, a disconnect during the WPA key exchange is treated as a
+wrong password. It asks for a new one, finds nobody to ask, and stops
+connecting to that network for good. One router hiccup was enough to keep a Pi
+offline for 10 hours. That is what `appliance/wifi-watchdog/` is for.

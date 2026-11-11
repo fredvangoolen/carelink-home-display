@@ -1,0 +1,158 @@
+# Builds the Core Ink firmware with the exact toolchain it was verified with.
+#
+#   every push that touches firmware/   -> build, kept as a workflow artifact
+#   a tag v<VERSION_STR>                -> also a GitHub release with the
+#                                          binaries, and (public repository
+#                                          only) the browser flasher on Pages
+#
+# The versions below are the ones the firmware was measured on. Change them
+# deliberately, flash the result, and watch full cycles before releasing:
+# docs/testing.md.
+name: firmware
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths:
+      - 'firmware/**'
+      - 'docs/flasher/**'
+      - '.github/workflows/firmware.yml'
+  workflow_dispatch:
+
+env:
+  ESP32_CORE: 3.3.11
+  M5GFX: 0.2.28
+  M5UNIFIED: 0.2.21
+  ARDUINOJSON: 7.4.3
+  FQBN: esp32:esp32:m5stack_coreink:PartitionScheme=huge_app
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Version shown on the display
+        id: version
+        run: |
+          v=$(sed -n 's/^#define VERSION_STR "\(.*\)"/\1/p' firmware/minimed-coreink/screens.h)
+          [ -n "$v" ] || { echo "VERSION_STR not found in screens.h"; exit 1; }
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "VERSION_STR is $v"
+          # A release must be the build whose version the display shows, or
+          # "which firmware is on this board?" has no answer.
+          if [ "$GITHUB_REF_TYPE" = tag ] && [ "$GITHUB_REF_NAME" != "v$v" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match VERSION_STR: expected v$v"
+            exit 1
+          fi
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.arduino15
+            ~/Arduino/libraries
+          key: arduino-${{ env.ESP32_CORE }}-${{ env.M5GFX }}-${{ env.M5UNIFIED }}-${{ env.ARDUINOJSON }}
+
+      - name: Toolchain, pinned
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install "esp32:esp32@$ESP32_CORE"
+          # --no-deps: M5Unified would otherwise pull the newest M5GFX.
+          arduino-cli lib install --no-deps "M5GFX@$M5GFX" "M5Unified@$M5UNIFIED" "ArduinoJson@$ARDUINOJSON"
+          arduino-cli core list
+          arduino-cli lib list
+
+      - name: Build the monitor (normal build, no test flags)
+        run: arduino-cli compile --fqbn "$FQBN" --output-dir build firmware/minimed-coreink
+
+      - name: Build the NVS slot editor (compile check only)
+        run: arduino-cli compile --fqbn "$FQBN" firmware/tools/nvs-slot-edit
+
+      - name: Collect the files a flasher needs
+        run: |
+          mkdir out
+          cp build/minimed-coreink.ino.bootloader.bin out/bootloader.bin
+          cp build/minimed-coreink.ino.partitions.bin out/partitions.bin
+          cp build/minimed-coreink.ino.bin            out/firmware.bin
+          cp ~/.arduino15/packages/esp32/hardware/esp32/$ESP32_CORE/tools/partitions/boot_app0.bin out/
+          # Offsets follow the huge_app partition table. The four parts are
+          # kept apart on purpose: one merged image would also overwrite the
+          # settings (NVS, 0x9000) on every upgrade.
+          cat > out/manifest.json <<EOF
+          {
+            "name": "CareLink home display",
+            "version": "${{ steps.version.outputs.version }}",
+            "new_install_prompt_erase": true,
+            "builds": [
+              {
+                "chipFamily": "ESP32",
+                "parts": [
+                  { "path": "bootloader.bin", "offset": 4096 },
+                  { "path": "partitions.bin", "offset": 32768 },
+                  { "path": "boot_app0.bin",  "offset": 57344 },
+                  { "path": "firmware.bin",   "offset": 65536 }
+                ]
+              }
+            ]
+          }
+          EOF
+          (cd out && sha256sum *.bin > SHA256SUMS)
+          cat out/SHA256SUMS
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ steps.version.outputs.version }}
+          path: out/
+          if-no-files-found: error
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware-${{ needs.build.outputs.version }}
+          path: out
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" out/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Firmware ${{ needs.build.outputs.version }}" \
+            --notes "Core Ink firmware ${{ needs.build.outputs.version }}, built with esp32 core $ESP32_CORE, M5Unified $M5UNIFIED, M5GFX $M5GFX, ArduinoJson $ARDUINOJSON. How to flash it: docs/staging-setup.md."
+
+  flasher:
+    # GitHub Pages; needs a public repository with Pages set to "GitHub Actions".
+    if: github.ref_type == 'tag' && github.event.repository.private == false
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware-${{ needs.build.outputs.version }}
+          path: site
+      - run: cp docs/flasher/index.html site/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

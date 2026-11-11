@@ -1,0 +1,373 @@
+# Core Ink monitor — Arduino port
+
+A C++ port of a MicroPython program, `main_m5coreink.py`, and what the Core
+Inks run. That program is no longer in this repository; where this README or
+a comment says "the MicroPython build" or names that file, it is explaining
+where a decision came from.
+
+How the port is put together — the entry point, the files, the cycle — is in
+[architecture.md](architecture.md).
+
+**Read [the Core Ink hardware notes](../../docs/coreink-micropython-notes.md) first.** Its hardware facts are
+language-independent — the power latch, the panel's refresh behaviour, the
+toggle wake rules, the epoch, the UIFlow `boot.py` trap — and this port
+depends on every one of them.
+
+## Status
+
+| Phase | | |
+|---|---|---|
+| 0 | toolchain, splash, power-hold gate | done |
+| 1 | config, WiFi, fetch, clock, parse | done |
+| 2 | main screen | done |
+| 3 | deep sleep, RTC state, toggle | done |
+| 4 | remaining screens, fault tables, alarms | done |
+| 5 | AP config portal | done |
+| 6 | soak and cutover | done — see below |
+
+All four screens confirmed against live pump data on the panel. Two bugs
+found that way and only that way, both invisible from the serial console:
+the RTC snapshot was re-initialised on every wake (so every toggle wake drew
+the secondary screens from nothing), and the IP was read after the radio had
+been powered down. See `1429da6` - the lesson is that the scheduled-poll path
+and the toggle path draw from different sources, and testing the first says
+nothing about the second.
+
+## Phase 6: the soak said the port was not worth it for power
+
+Run for several days beside the MicroPython board, the two drew **almost
+identical** power. The port is a codebase improvement, not a battery one, and
+the honest reason it was kept is the code rather than the runtime.
+
+Why: the workload was never compute-bound. Of a cycle, the panel takes ~2.3 s
+of e-paper waveform, WiFi association 1.2 s, and the application logic about
+0.1 s — where the C++ build is in fact *slower* than MicroPython (102 ms
+against 79 ms), the round trip dominating either way. Compiling away the
+interpreter optimised the one part that was already small, and most of that
+saving went straight back into the per-wake panel clear this port turned out
+to need.
+
+The rest dilutes it. At a ~1.5 % duty cycle, the two builds differ by 0.3 %
+of `(I_awake - I_sleep)`; if this board's deep-sleep draw is a milliamp or
+more, that difference disappears into the noise over a few days, which is
+what happened.
+
+**Two things were never measured and would settle it**, if anyone cares to:
+
+- current, rather than time — everything here is timing, never milliamps
+- battery life at a 600 s poll instead of 300 s. If it roughly doubles, awake
+  time dominates and is worth attacking; if it barely moves, deep sleep
+  dominates and no amount of awake-time work will help
+
+And if awake time does dominate, the lever is not the language: it is clearing
+the panel every *fourth* wake instead of every wake (~4.28 s → ~2.9 s), a
+bigger win than the whole port delivered. M5's own factory firmware clears
+once per ten updates, so once per wake is likely conservative — though its
+device never sleeps, so its panel controller keeps state ours loses.
+
+## Build and flash
+
+```bash
+FQBN=esp32:esp32:m5stack_coreink:PartitionScheme=huge_app
+arduino-cli compile --fqbn "$FQBN" .
+arduino-cli compile --fqbn "$FQBN" --upload -p /dev/ttyACM0 .
+```
+
+`huge_app` is not optional: the default 4 MB scheme reserves two OTA slots
+this project never uses and leaves only 1.2 MB for the app, which the
+WiFi + JSON build already fills to 88%.
+
+Requires `esp32:esp32` core 3.3.11 and libraries **M5Unified** 0.2.21,
+**M5GFX** 0.2.28 and **ArduinoJson** 7.4.3; the install commands, and how to
+flash a released build without any of this, are in
+[docs/staging-setup.md](../../docs/staging-setup.md).
+
+## Several WiFi networks
+
+Up to three, tried in a way that costs nothing in the steady state. The slot
+that last worked is remembered in RTC memory and tried first, with its
+channel and BSSID cached so `WiFi.begin()` can skip hunting for the access
+point. Only if that fails is a scan paid — once — after which the new network
+becomes the remembered one.
+
+Measured on this board, moving between home WiFi and a phone hotspot:
+
+| | |
+|---|---|
+| remembered network present | **1176 ms** — same as the single-network build |
+| surroundings changed (8 s timeout + scan + connect) | 15.9 s, once |
+
+Trying networks in turn instead would spend the full attempt timeout on an
+absent network on *every* wake at whichever site is listed second. Scanning
+only attempts networks actually in range.
+
+Slot 0 keeps the original `wifissid`/`wifipass` NVS keys, so a device
+configured before this existed needs no reconfiguration; slots 1 and 2 use
+`ssid1`/`pass1` and `ssid2`/`pass2`. The setup portal offers all three pairs.
+
+### Plan B: the Pi's hotspot
+
+Slot 2 is not a third ordinary network but the **fallback**: the
+`carelink-travel` hotspot the Pi runs next to its own WiFi connection (see
+`appliance/travel-ap`, and [docs/travel.md](../../docs/travel.md) for both halves together). Slots 0 and 1 are plan A and are
+always preferred. Plan B is used only when plan A does not work:
+
+- no plan A network in range, or it refuses to associate;
+- **plan A joins fine but the proxy does not answer** — a holiday-house
+  router that keeps its clients apart. Measured 2026-11-02: joined in 3 s,
+  every mDNS lookup failed. The board then switches to plan B within the
+  same wake. While plan B is still untried, the proxy lookup budget is
+  6 s instead of 20 s and "Looking for the proxy" is not drawn.
+
+Once on plan B the board stays there (remembered like any other network)
+but tries plan A again every 12 cycles — one hour — and returns as soon as
+the proxy answers there. Only "nothing answered" triggers a switch; a proxy
+that answers with no data or wants a login is reachable, and switching
+networks would not change what it says. Changing networks also drops the
+cached proxy address, which differs per network (10.43.0.1 on the hotspot).
+
+Before this, slot 2 was an ordinary third network. A board with something
+there that is not the Pi's hotspot will now only use it as a last resort.
+
+**Slot 2 fills itself.** The proxy serves its Pi's hotspot at
+`GET /carelink/fallback` (`{"ssid": ..., "psk": ...}`, or 404 when the Pi has
+none). After a cold boot, and then once a day (`FALLBACK_CHECK_CYCLES`, 288),
+the board asks — only over plan A, the household network the proxy trusts,
+and only in a cycle where the proxy has already answered, so a dead proxy
+costs nothing — and writes slot 2 when the answer differs. Nobody types the
+hotspot's 24-character random password into a phone, and a re-provisioned
+Pi's new password reaches the display at home instead of failing on a trip.
+The proxy is authoritative for slot 2 when it offers one; a 404 leaves slot 2
+as it is, and slots 0 and 1 are never touched. The password is never logged.
+
+Verified on hardware 2026-11-10 against carelink-01: an empty slot 2 →
+`learned 'carelink-travel' from the proxy`; a wrong password there →
+`new password for ...`; with plan A then blocked, the learned password
+joined the hotspot and fetched; a proxy answering 404 → `the proxy offers
+none`.
+
+That first test found a latent bug in the HTTP reader: the header loop ran
+only `while (client.connected())`, and a reply small enough to arrive whole
+lets the proxy close before the headers are read — so it stopped after the
+first header and left the rest in the body (62 bytes of JSON arrived as 133).
+It now also continues while data is buffered.
+
+A total WiFi failure still just skips the cycle and retries on the next wake —
+it must never fall into AP setup mode, which would strand a working monitor
+over a hiccup.
+
+## Finding the proxy by name: IPv4, looked up once
+
+A proxy given as a name (`carelink-home.local`) is looked up asking for an **IPv4**
+address only. The core's own lookup (`NetworkManager::hostByName`) asks for
+IPv6 first as soon as the board has a global IPv6 address. On a network with
+IPv6 the Pi answers with one, the proxy listens on IPv4 only, and the connect
+then fails after 8 s. Three such cycles read *No link to proxy*, and a cold
+boot cleared it only until the board got its IPv6 address again. Measured:
+fetches of 2.9 s and 9.0 s and intermittent "No link" before; 8 ms lookups
+and 0.1 s fetches after.
+
+The address is then **remembered across deep sleep** and looked up again only
+when nothing answers there, so a proxy that moved to a new address is found
+in the same cycle. The lookup is mDNS, multicast, which WiFi does not
+retransmit: even IPv4-only it once took 2.2 s with a microwave running on
+the same band. The cache is keyed by the configured name, so a new setting
+never reuses the old address. Tested by poisoning the cache with an address
+nobody answers on (`-DDEBUG_STALE_PROXY=1`): 8 s connect timeout, a 10 ms
+lookup, and that cycle's data still arrived.
+
+A lookup that has to retry shows *Looking for the proxy* on the panel instead
+of leaving it white, and gives up after 20 s. An address entered as a number
+is used as-is.
+
+## Configuration
+
+Normally you never touch this: an unconfigured device starts an access
+point, `M5INK_MINIMED_MON`, and serves a setup form at
+`http://192.168.4.1` — the same fields and field names as the MicroPython
+build, so the two are interchangeable to anyone who has set one up before.
+
+The access point's password is **random**, 12 characters, new each time the
+portal starts, and shown on the panel with a WiFi QR code: scan it with a
+phone camera, or type the name and password on a laptop. It used to be a fixed
+`123456789`, printed in this repo — and with WPA2, knowing the password is
+enough to decrypt a recorded setup session, home WiFi password included. The
+form itself is still plain HTTP; WPA2 under it is what protects it, and only
+while that password is secret. Once a client joins, the panel switches to the
+"connection established" screen and the password is no longer shown.
+
+It is also a **captive portal**: a DNS server on the board answers every name
+with `192.168.4.1`, so a phone's connectivity check lands on the form and the
+phone offers "sign in to network" by itself. Without that, a phone sees a
+network with no internet, keeps using mobile data, and `http://192.168.4.1`
+typed into its browser goes nowhere.
+
+**It guards against typing mistakes**, the costliest setup error so far: a
+board set up at a holiday house as `Seaview12`, for the network `seaview 12`,
+never joined it, and that read as a router keeping its clients apart until
+the spelling was spotted.
+
+- The networks in range are scanned when the portal starts (before the
+  access point is up) and offered in a list above each name field, strongest
+  first, with signal strength. Picking one copies the exact name; the field
+  stays editable for a network that is elsewhere (home, while setting up on
+  holiday) or hidden. Only 2.4 GHz networks appear, which is all the display
+  can use. "Scan again" rescans.
+- **Test and save** tests before anything is stored. Each network the board
+  can see is joined with the given password (the access point stays up; it
+  moves to that network's channel, so a phone may drop off for a moment), and
+  the proxy is looked up and connected to over it. That catches a wrong
+  password, a mistyped proxy name, and a network that keeps its devices
+  apart. The result page lists each network; the panel shows a summary too,
+  for a phone that dropped off.
+- A name that is not in range is not tested but flagged, with the network it
+  most likely meant when they match ignoring case, spaces and punctuation
+  ("Did you mean `seaview 12`?").
+- A network with a name but no password is flagged: the display ignores it.
+- The fields have auto-capitalisation, autocorrect and spellcheck off — a phone
+  capitalises the first letter by itself, and names and passwords are
+  case-sensitive.
+- The form is POSTed, so passwords are not in the URL.
+
+Nothing is stored until the person has seen the results and saves ("Save
+anyway" when there is a warning, since one can be expected); "Change
+settings" reopens the form as it was. A test build,
+`-DPORTAL_AP_TEST=1` via `compiler.cpp.extra_flags`, opens the portal on every
+boot of a configured board and stores nothing, so the whole flow can be tried
+without wiping a working device. It returns to the portal after every save,
+by design — reflash the normal build afterwards.
+
+Another improvement over that build: `WebServer::arg()` URL-decodes, where the
+Python splits the raw query string, so a WiFi password containing `%`, `&` or
+a space works here and silently does not there.
+
+Once configured, the portal never comes back by itself — a total WiFi or
+proxy failure is not a reason to drop into setup. To start over, for a typo
+in the proxy name or a board moving house, **wipe it from the device**: flick
+to the *Device & Network* screen, hold the toggle pressed in for 5 seconds,
+flick down to **Yes** and press. That clears the `minimed` NVS namespace
+and the RTC snapshot (so the next setup does not open on the last patient's
+reading) and restarts into the portal. The dialog opens on **No**, and 15
+seconds without an answer also counts as No. Pressing is not a wake source —
+ext1 on this chip can only wake when *all* its pins are low, so it cannot
+share with the down pin — which is why the board must already be awake on
+that screen, i.e. flicked there.
+
+To seed settings over the cable instead, they live in NVS under the namespace
+`minimed`, read via `Preferences`.
+Credentials are deliberately **not** in this repo. Until the AP portal
+arrives in phase 5, seed them by generating an NVS image and flashing it to
+the `nvs` partition at `0x9000` (`0x5000` long in every 4 MB scheme):
+
+```bash
+cat > /tmp/nvs.csv <<'EOF'
+key,type,encoding,value
+minimed,namespace,,
+wifissid,data,string,YOUR_SSID
+wifipass,data,string,YOUR_PASSWORD
+proxyaddr,data,string,192.168.1.5
+ntpserver,data,string,pool.ntp.org
+patient,data,string,Sam
+proxyport,data,u16,8081
+timezone,data,i32,1
+EOF
+python nvs_partition_gen.py generate /tmp/nvs.csv /tmp/nvs.bin 0x5000
+esptool --chip esp32 --port /dev/ttyACM0 write-flash 0x9000 /tmp/nvs.bin
+```
+
+`patient` is optional — the proxy reports `firstName`, so a device never told
+a name still shows the right one; the setting only overrides it.
+
+## Font metrics differ from the MicroPython build
+
+M5GFX reports different metrics to C++ than through its MicroPython binding,
+so **layout constants cannot be copied between the two builds**:
+
+| font | Python's comments | C++ measured |
+|---|---|---|
+| DejaVu72 | 50 px | 75 px |
+| DejaVu40 x2 | 86 px tall, 140 wide | 84 tall, 156 wide |
+| DejaVu24 | 26 px | 25 px |
+| DejaVu18 | 20 px | 18 px |
+| DejaVu12 | 16 px | 13 px |
+
+The Python file chose DejaVu40-at-2x for the large reading precisely because
+its DejaVu72 measured only 50 px. Here DejaVu72 is taller *and* 15 px
+narrower, so the port uses it instead: with DejaVu40-at-2x the trend arrows
+shrink to 10 px against the 17 px DejaVu72 leaves them, and the arrows are
+what turn a number into a direction. Both builds compute their geometry from
+`fontHeight()`/`textWidth()` at runtime, so each is internally consistent -
+they simply do not produce identical panels.
+
+## Fault tables were generated, not transcribed
+
+`faults.cpp` was generated from `main_m5coreink.py`'s `faultIdMapping` (137
+entries) and `faultIdTable` (63), plus the low/high glucose id sets, by a
+script in the phase 4 commit. Hand-transcribing 200 lines of
+reverse-engineered pump data is exactly the kind of job that produces one
+silently wrong entry. That program is gone from this repository, so
+`faults.cpp` is now the source: add entries there, and check each one twice.
+
+Verified on device against the Python's own answers: 002, 816, 802, 011 and
+an unknown 999 all resolve identically, and the glucose-recovered checks
+agree.
+
+## The panel needs a clear on every wake
+
+`M5.begin()`'s `clear_display` gates exactly one thing — `Display.clear()` —
+and the port needs it **true**, where `main_m5coreink.py` sets it false.
+
+Under UIFlow the firmware ran its own `M5.begin()` with default config on
+every boot, so the panel was cleared each wake regardless; the app's `false`
+only suppressed a second, redundant clear. Here the sketch's `M5.begin()` is
+the only one, so `false` means the panel is never cleared and residue
+accumulates until a changed screen cannot be read.
+
+Waveform choice is not a substitute. Both the quality two-pass on every draw
+and a black/white conditioning flush on cold boot were tried on hardware and
+neither helped; only the per-wake clear did. It costs ~1.9 s (2.35 s -> 4.28 s
+per cycle), which is worth paying and still under MicroPython's 5.26 s.
+
+This is the sharpest example so far of why the two builds cannot share
+reasoning: `clear_display: False` and `FULL_REFRESH_EVERY = 12` are both
+correct in the Python file and both wrong here, for a reason that lives in
+the firmware rather than in either file.
+
+## Measured on this board
+
+Against the MicroPython build running the same cycle on the same hardware:
+
+| | MicroPython | Arduino |
+|---|---|---|
+| WiFi association | 2081 ms | 1178 ms |
+| fetch + parse | 79 ms | 102 ms |
+| awake per cycle | 5260 ms | **4284 ms** |
+| awake per day | ~25 min | **~20 min** |
+| free RAM | ~55 KB largest block | 275 KB |
+| image size | 3.4 MB | 1.16 MB |
+
+The cycle was 2.0–2.3 s before the per-wake panel clear became necessary; see
+below. Measured power over several days: **near-identical** to MicroPython.
+
+### Power hold, from reset
+
+The rail is latched by GPIO12 and coasts only briefly with it floating, so
+how fast firmware takes the latch decides whether a crash on battery recovers
+or switches the board off for good.
+
+| | assert |
+|---|---|
+| MicroPython (patched firmware) | 100 ms |
+| Arduino, software reset — the crash case | 147 ms |
+| Arduino, cold boot | 238 ms |
+
+Arduino is slower because the stock bootloader validates the image, which our
+patched UIFlow firmware skips. **Verified on battery** with a restart loop
+counting in `RTC_NOINIT_ATTR` memory: the count keeps climbing, so 147 ms is
+inside the coast and the self-recovery property survives the port.
+
+Note `RTC_DATA_ATTR` is **not** suitable for anything that must outlive a
+crash — it lives in `.rtc.bss`, which ESP-IDF zeroes on every boot that is
+not a deep-sleep wake. That is the right behaviour for the state snapshot
+(which must be discarded on a cold boot, as MicroPython's RTC memory is) and
+the wrong one for a reboot counter.

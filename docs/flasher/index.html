@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flash the CareLink home display</title>
+<!-- Published by .github/workflows/firmware.yml next to manifest.json and the
+     four .bin files of a release. It does nothing when opened from the
+     repository itself. -->
+<style>
+  :root { --bg:#fbfaf7; --fg:#1f2328; --muted:#5b6470; --line:#d9d6cf; --card:#fff; --warn:#8a4b00; --warnbg:#fff4e0; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#16181b; --fg:#e8e6e1; --muted:#a2a8b0; --line:#34383d; --card:#1e2125; --warn:#ffcf8a; --warnbg:#3a2a10; }
+  }
+  body { margin:0; background:var(--bg); color:var(--fg); font:17px/1.55 system-ui, sans-serif; }
+  main { max-width:42rem; margin:0 auto; padding:2rem 1rem 4rem; }
+  h1 { font-size:1.7rem; line-height:1.2; margin:0 0 .3rem; }
+  h2 { font-size:1.15rem; margin:2rem 0 .5rem; }
+  p.lead { color:var(--muted); margin-top:0; }
+  ol { padding-left:1.3rem; } li { margin:.45rem 0; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:1rem 1.2rem; margin:1.2rem 0; }
+  .warn { background:var(--warnbg); color:var(--warn); border-color:transparent; }
+  table { border-collapse:collapse; width:100%; } th, td { text-align:left; vertical-align:top; padding:.5rem .6rem; border-top:1px solid var(--line); }
+  th { border-top:0; } code { font-size:.92em; }
+  #version { color:var(--muted); }
+</style>
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+</head>
+<body>
+<main>
+  <h1>Flash the CareLink home display</h1>
+  <p class="lead">Puts the released firmware on an M5Stack Core Ink, from this page, over USB. Nothing to install. <span id="version"></span></p>
+
+  <div class="card">
+    <esp-web-install-button manifest="manifest.json">
+      <span slot="unsupported"><strong>This browser cannot do it.</strong> Use Chrome or Edge on a laptop or desktop; phones, Firefox and Safari have no access to USB serial ports.</span>
+      <span slot="not-allowed"><strong>This page must be opened over https.</strong></span>
+    </esp-web-install-button>
+  </div>
+
+  <h2>Steps</h2>
+  <ol>
+    <li>Connect the Core Ink to the computer with a USB-C <em>data</em> cable. A charge-only cable shows no port.</li>
+    <li>Press the button above and pick the serial port (often named <em>USB Serial</em> or <em>CH9102</em>). No port in the list: try another cable, then install the CH9102 driver from M5Stack.</li>
+    <li>Choose <strong>Install</strong>, and answer the question about erasing (below).</li>
+    <li>Wait for it to finish, about a minute. Unplug, then power the display from a proper USB adapter.</li>
+  </ol>
+
+  <h2>Erase or not?</h2>
+  <table>
+    <tr><th>You are</th><th>Choose</th><th>Result</th></tr>
+    <tr><td>staging a new set, or moving a display to another household</td><td><strong>Erase</strong></td><td>All settings are gone, the WiFi password included. The display starts in setup mode and shows a QR code.</td></tr>
+    <tr><td>updating a display that is in use</td><td><strong>Do not erase</strong></td><td>WiFi and proxy settings are kept. The display carries on with the new firmware.</td></tr>
+  </table>
+
+  <div class="card warn">
+    This display repeats information from an insulin pump. It is not a medical device and not an alarm system. After flashing, watch it show a current reading, with the right time, before relying on it.
+  </div>
+</main>
+<script type="module">
+  // Show which release this page carries; the page works without it.
+  try {
+    const m = await (await fetch("manifest.json")).json();
+    document.getElementById("version").textContent = "Version " + m.version + ".";
+  } catch (e) {}
+</script>
+</body>
+</html>

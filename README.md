@@ -1,0 +1,69 @@
+# CareLink home display
+
+A small e-paper display that shows what a Medtronic MiniMed 770G/780G insulin
+pump is doing, for the people who care for the person wearing it. It hangs in
+the house, wakes every five minutes, shows the current glucose reading, trend,
+active insulin and any pump alarm (with a beep), and goes back to sleep.
+
+<img src="docs/img/coreink.jpg" alt="M5Stack Core Ink showing a glucose reading, trend arrow and active insulin" width="300">
+
+It is two parts that are built, installed and taken on a trip together:
+
+| Part | Runs on | Directory | Licence |
+|---|---|---|---|
+| **Display** | M5Stack Core Ink (ESP32, 1.54" e-paper, buzzer) | [`firmware/`](firmware/) | GPL-3.0 |
+| **Proxy** | Raspberry Pi | [`proxy/`](proxy/) | AGPL-3.0 |
+| **Appliance** — turns a stock Pi into the proxy, with browser-based token renewal and the travel hotspots | Raspberry Pi | [`appliance/`](appliance/) | AGPL-3.0 |
+
+```
+pump ──► phone ──► CareLink Cloud ◄── proxy (Pi) ◄── display (Core Ink)
+                                       :8081          every 5 minutes
+```
+
+The proxy holds the one CareLink login and re-serves the data on the local
+network; the display never talks to Medtronic. The two agree on two URLs:
+`GET /carelink/nohistory` (the data) and `GET /carelink/fallback` (the Pi's
+travel hotspot, see [docs/travel.md](docs/travel.md)).
+
+## Getting started
+
+1. **The Pi**: [`appliance/README.md`](appliance/README.md) — one script,
+   `appliance/provision.sh`, then a CareLink login in a browser.
+2. **The display**: [`firmware/minimed-coreink/README.md`](firmware/minimed-coreink/README.md)
+   — flash a released build from the browser ([docs/staging-setup.md](docs/staging-setup.md))
+   or build it with `arduino-cli`, then give it the home WiFi and the
+   proxy's address on its setup page.
+
+## Documentation
+
+- [docs/runbook.md](docs/runbook.md) — staging, delivering and supporting a
+  set, with the security model and its known gaps; and
+  [docs/home-installation-checklist.md](docs/home-installation-checklist.md),
+  the step-by-step for the visit itself.
+- [docs/staging-setup.md](docs/staging-setup.md) — what you need on your own
+  computer to stage a set, including flashing a released firmware from the
+  browser with no build environment.
+- [docs/travel.md](docs/travel.md) — taking the set somewhere else: plan A,
+  plan B and the hotspots, across both halves.
+- [docs/lessons.md](docs/lessons.md) — things that cost a day to find out.
+- [docs/testing.md](docs/testing.md) — test builds, what is verified on
+  hardware, and what is still untested.
+- [docs/carelink-api.md](docs/carelink-api.md) — notes on the undocumented
+  CareLink Cloud API; `docs/carelink-data.ods` describes the JSON the proxy
+  serves.
+- [`firmware/minimed-coreink/architecture.md`](firmware/minimed-coreink/architecture.md)
+  — how the firmware is put together.
+
+## Credits and licence
+
+This is built on other people's work; see [LICENSE.md](LICENSE.md) for who and
+for the licence of each directory.
+
+## Disclaimer
+
+This project is for educational and informational purposes only. It relies on
+a series of fragile components and assumptions, any of which may break at any
+time. It is not approved by any regulator and must not be used to make medical
+decisions. It is neither affiliated with nor endorsed by Medtronic, and may
+violate their Terms of Service. Use of this code is without warranty or
+support of any kind.
