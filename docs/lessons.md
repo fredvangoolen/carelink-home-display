@@ -31,6 +31,25 @@ The display is 2.4 GHz only. So a Pi connected on 5 GHz cannot serve the
 display a hotspot until it moves itself to 2.4 GHz. See
 [travel.md](travel.md).
 
+A router that steers its clients between bands undoes that move. Asking
+NetworkManager for the 2.4 GHz band is not enough: the Pi joins there and
+follows the router's request to 5 GHz seconds later. Tying the connection to
+the 2.4 GHz radio's own address holds.
+
+## A Pi on cable and WiFi answers for both addresses on both ports
+
+Linux answers an address request (ARP) for any of its addresses on whichever
+port the request arrives. With the cable in, the Pi announced its WiFi address
+with the cable port's hardware address, and traffic for the WiFi address came
+in over the cable. That works until the cable is pulled. `provision.sh` now
+makes each port answer for its own address only.
+
+It was found while chasing a night in which a third of one display's fetches
+failed with the Pi on WiFi only: the Pi's answer arrived half, then nothing
+for 30 seconds. That fault stopped when the Pi's WiFi connection was renewed
+and could not be brought back in two days of trying, so its cause is not
+known; the address mix-up was real but was not shown to be it.
+
 ## A Core Ink that is off looks exactly like one that has locked up
 
 E-paper keeps its last image with no power, so a board that has switched off

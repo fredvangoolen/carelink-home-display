@@ -143,9 +143,15 @@ station and one access point at once, on **one channel** (`iw list`:
 `#{ managed } <= 1, #{ AP } <= 1, #channels <= 1`), and the display is
 2.4 GHz only. So `carelink-travel-ap.timer`, every minute:
 
-- moves the Pi's own WiFi to 2.4 GHz (`802-11-wireless.band bg` on that
-  profile) if it is on 5 GHz — and puts it back, with no hotspot, if that
-  network has no 2.4 GHz radio there; tried once per network per boot;
+- moves the Pi's own WiFi to 2.4 GHz if it is on 5 GHz, by tying that
+  profile to the strongest 2.4 GHz radio of the same network
+  (`802-11-wireless.band bg` plus `802-11-wireless.bssid`). The band alone
+  does not hold against a router that steers its clients: carelink-01 was
+  moved back to 5 GHz two seconds after joining (2026-11-12). With no
+  2.4 GHz radio in sight there is no hotspot, and it looks again once an
+  hour;
+- drops that tie whenever the Pi's WiFi has no network, so a replaced router
+  or a switched-off mesh node cannot keep the Pi offline;
 - runs the hotspot on the Pi's WiFi channel, or on channel 1 when the Pi is
   on Ethernet with WiFi unused;
 - adds the second interface, `uap0`, which is gone after every reboot;

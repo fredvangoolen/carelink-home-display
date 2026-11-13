@@ -170,6 +170,21 @@ EOF
 sudo systemctl restart systemd-journald
 sudo journalctl --flush
 
+say "one address per network port"
+# Linux by default answers an ARP request for ANY of its addresses on
+# whichever port the request arrives. A Pi on a cable and on WiFi in the same
+# network therefore announced its WiFi address with the cable port's hardware
+# address: captured on carelink-01 on 2026-11-12, 11 such answers to the
+# router and 7 to the display in 36 minutes, and the display's fetches to the
+# WiFi address arrived over the cable. Whoever remembers that pairing sends
+# into a dead port once the cable is pulled. With these two, each port
+# answers only for its own address and announces only its own.
+sudo tee /etc/sysctl.d/50-carelink-arp.conf >/dev/null <<'EOF'
+net.ipv4.conf.all.arp_ignore = 1
+net.ipv4.conf.all.arp_announce = 2
+EOF
+sudo sysctl -q -p /etc/sysctl.d/50-carelink-arp.conf
+
 if [[ "$STAY_HOME" != 1 ]]; then
 say "fallback setup hotspot"
 # When the Pi boots with no network at all - taken somewhere with WiFi only -

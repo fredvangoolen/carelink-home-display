@@ -50,8 +50,9 @@ Change both or neither.
 
 - **One radio, one channel.** A Pi 4 can be one WiFi client and one access
   point at once, on one channel, and the display is 2.4 GHz only. So the Pi
-  moves its own WiFi to 2.4 GHz to run the hotspot. On a network with no
-  2.4 GHz radio it moves back and there is no hotspot.
+  moves its own WiFi to 2.4 GHz to run the hotspot, and ties itself to that
+  one radio of the router so that the router cannot steer it back to 5 GHz.
+  On a network with no 2.4 GHz radio there is no hotspot.
 - **One access point at a time.** The travel hotspot stands aside while the
   setup hotspot is up.
 - **The hotspot reaches the proxy and nothing else**: DHCP, mDNS and port

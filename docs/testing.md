@@ -48,7 +48,18 @@ for s in appliance/*.sh appliance/*/*.sh; do bash -n "$s"; done
 - **The display's "Change settings" refill**: reopening the setup page on a
   configured board and checking that every field comes back filled in.
 - **The travel hotspot's revert**: on a network with no 2.4 GHz radio, the Pi
-  should move back to 5 GHz and run no hotspot.
+  should stay on 5 GHz and run no hotspot.
+- **The travel hotspot's tie to one 2.4 GHz radio, as the script makes it**:
+  the tie itself was made by hand on carelink-01 and held for 22 hours
+  against a steering router (2026-11-12). Not yet run: the script choosing
+  the radio and making the tie, its hourly retry, and letting go of the tie
+  when the Pi's WiFi has no network (a boot with the tied radio gone
+  included).
+- **One address per network port** (`/etc/sysctl.d/50-carelink-arp.conf`):
+  what it prevents was captured on carelink-01; the setting has not been on
+  a Pi yet. To check: with cable and WiFi both connected, the cable port no
+  longer answers for the WiFi address, and both hotspots still hand out
+  addresses.
 - **`FORCE=1` on the setup hotspot while the travel hotspot is up**: the
   travel hotspot should stand aside and come back afterwards.
 - **The automatic setup hotspot, rehearsed at home**: a Pi booted with no
