@@ -115,7 +115,10 @@ def on_sigterm(signum, frame):
 #################################################
 def get_essential_data(data):
    mydata = ""
-   if data != None:      
+   # CareLink answers a failed request with a body that has no patientData.
+   # That is no data, like None: answering nothing at all instead (a KeyError
+   # here) left the display waiting 30 s for a reply, twice (2026-11-14).
+   if isinstance(data, dict) and isinstance(data.get("patientData"), dict):
       mydata = data["patientData"].copy()
       try:
          del mydata["sgs"]
@@ -426,6 +429,7 @@ while True:
             else:
                # Connection error occured
                log.error("ERROR: failed to get data (Connection error, response code %d)" % client.getLastResponseCode())
+               recentData = None
                time.sleep(60)
                continue
          except Exception as e:
