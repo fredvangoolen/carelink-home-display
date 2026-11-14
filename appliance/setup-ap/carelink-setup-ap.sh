@@ -17,6 +17,7 @@ set -uo pipefail
 
 WAIT_S="${WAIT_S:-90}"         # how long to wait for a network after boot
 AP_S="${AP_S:-300}"            # how long the hotspot stays up
+RELEASE_S="${RELEASE_S:-30}"   # after this long without a network, drop ties to one radio (multiple of 5)
 FORCE="${FORCE:-0}"            # 1 = raise it even with a network (testing)
 IFACE="${IFACE:-wlan0}"
 CON="carelink-setup-ap"
@@ -41,9 +42,28 @@ teardown() {
 }
 trap teardown EXIT INT TERM
 
+# carelink-travel-ap ties the Pi's WiFi to one 2.4 GHz radio of its network
+# (see that script). If that radio is gone - a replaced router - the Pi finds
+# no network at boot although one is there. Let go of every such tie, so the
+# network can be joined by any radio. Measured 2026-11-14 on carelink-01
+# with a tie to a radio that did not exist: without this the Pi raised this
+# hotspot for its full 5 minutes and was back on the network 7 minutes after
+# boot; NetworkManager joins within seconds once the tie is gone.
+release_radio_ties() {
+  local uuid
+  while read -r uuid; do
+    [[ "$(nmcli -g 802-11-wireless.mode con show "$uuid" 2>/dev/null)" == "infrastructure" ]] || continue
+    [[ -n "$(nmcli -g 802-11-wireless.bssid con show "$uuid" 2>/dev/null)" ]] || continue
+    nmcli con modify "$uuid" 802-11-wireless.bssid ""
+    log "'$(nmcli -g connection.id con show "$uuid")' is free to use any radio again"
+  done < <(nmcli -t -f UUID,TYPE con show 2>/dev/null | awk -F: '$2=="802-11-wireless" {print $1}')
+}
+
 if [[ "$FORCE" != 1 ]]; then
   for ((i = 0; i < WAIT_S; i += 5)); do
     if connected; then log "network present, no hotspot"; exit 0; fi
+    # A healthy boot is on its network well within 30 s.
+    (( i == RELEASE_S )) && release_radio_ties
     sleep 5
   done
   connected && { log "network present, no hotspot"; exit 0; }

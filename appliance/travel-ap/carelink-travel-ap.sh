@@ -87,9 +87,9 @@ IFS=: read -r _ _ sta_state sta_con <<<"$sta_line"
 on_ethernet=0
 awk -F: '$2=="ethernet" && $3=="connected" {f=1} END {exit !f}' <<<"$devs" && on_ethernet=1
 
-# Before anything else, the setup hotspot included: a Pi booted where its
-# tied radio no longer exists must be able to join the network by another
-# one, rather than conclude it has no network and ask for a phone.
+# For a tied radio that goes away while the Pi is running. At boot this
+# script first runs after the setup hotspot has decided, which is too late:
+# carelink-setup-ap.sh lets go of the ties itself, 30 s into its wait.
 if [[ "$sta_state" != "connected" && "$sta_state" != connecting* ]]; then
   release_radio_ties
 fi
