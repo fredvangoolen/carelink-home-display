@@ -24,6 +24,14 @@
 #    19/11/2024 - Update discovery_url
 #    03/01/2026 - Added new OAuth 2.0 work flow (by @m0rt4l1n)
 #
+#  Modified:
+#
+#    This is not the original file. It was taken from
+#    https://github.com/ondrej1024/carelink-python-client in 2026 and changed
+#    by Frederik in 2026 for carelink-home-display
+#    (https://github.com/fredvangoolen/carelink-home-display): the requests
+#    and the token are printed only in debug mode, no longer on every login.
+#
 #
 #  Dependencies:
 #  

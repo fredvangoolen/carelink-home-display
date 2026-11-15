@@ -34,6 +34,19 @@
 #
 #  Copyright 2021-2026, Ondrej Wisniewski
 #
+#  Modified:
+#
+#    This is not the original file. It was taken from
+#    https://github.com/ondrej1024/carelink-python-client in 2026 and changed
+#    by Frederik in October and November 2026 for carelink-home-display
+#    (https://github.com/fredvangoolen/carelink-home-display): among other
+#    things the /carelink/fallback endpoint, a token accepted by POST only
+#    while one is needed, no cross-origin access, and the handling of clock
+#    jumps and of error answers from CareLink. That repository's history
+#    has each change with its date.
+#
+#  Modifications copyright 2026, Frederik
+#
 ###############################################################################
 
 import carelink_client2
@@ -190,7 +203,7 @@ def webgui(status,action=None,error=""):
    tail =  '<span style="font-size: 16px; color: red; font-family: Helvetica,Arial,sans-serif;"></span><br> \n \
             <table style="text-align: left; width: 460px; background-color: #2196F3;" border="0" cellpadding="2" cellspacing="2"><tbody> \n \
             <tr><td style="vertical-align: top; text-align: center;"> \n \
-            <span style="font-family: Helvetica,Arial,sans-serif; color: white;"><a style="text-decoration:none; color: white;" href=https://github.com/ondrej1024/carelink-python-client>carelink_client2_proxy</a> | version %s | 2024</span></td></tr> \n \
+            <span style="font-family: Helvetica,Arial,sans-serif; color: white;"><a style="color: white;" href=https://github.com/fredvangoolen/carelink-home-display>carelink-home-display</a> proxy | version %s | based on <a style="color: white;" href=https://github.com/ondrej1024/carelink-python-client>carelink_client2_proxy</a></span></td></tr> \n \
             </tbody></table></body></html>' % VERSION
 
    html = head + body + form + tail

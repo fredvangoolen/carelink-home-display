@@ -1,5 +1,11 @@
 // Minimed monitor, M5Stack Core Ink, Arduino port
 //
+// Copyright 2026, Frederik. GPL-3.0; see ../LICENSE and LICENSE.md in the
+// root. A rewrite in C++ of a MicroPython monitor that was a redesign of
+// Ondrej Wisniewski's M5 Minimed Monitor
+// (https://github.com/ondrej1024/m5-minimed-monitor, GPL-3.0): the fault
+// tables and the poll / configure / setup-hotspot design come from there.
+//
 // A port of main_m5coreink.py. Board-independent logic is duplicated across
 // the two, not shared, and the hardware facts both depend on live in
 // docs/coreink-micropython-notes.md - read that before changing timing, power, panel or

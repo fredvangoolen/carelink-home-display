@@ -1,5 +1,10 @@
 // Pump fault codes.
 //
+// The tables come from Ondrej Wisniewski's M5 Minimed Monitor
+// (https://github.com/ondrej1024/m5-minimed-monitor, GPL-3.0), by way of the
+// MicroPython build this firmware replaced. Arranged for C++ and extended by
+// Frederik, 2026. GPL-3.0; see ../LICENSE and LICENSE.md in the root.
+//
 // Reverse-engineered from real Carelink pump alarm data. Treat as data, not
 // as something to restructure: extend by adding entries, never by changing
 // the shape. The mapping is many-to-one (several raw ids share one canonical
