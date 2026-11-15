@@ -47,6 +47,9 @@ proxy settings (choose *do not erase*). The page always carries the
 
 ## Documentation
 
+- [docs/manual.md](docs/manual.md) — **the user guide**: what the set does
+  and what a household needs, what preparing it takes, and the display's
+  screens and messages. Start here if you are not technical.
 - [docs/runbook.md](docs/runbook.md) — staging, delivering and supporting a
   set, with the security model and its known gaps; and
   [docs/home-installation-checklist.md](docs/home-installation-checklist.md),
