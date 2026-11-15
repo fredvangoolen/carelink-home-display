@@ -32,7 +32,8 @@ travel hotspot, see [docs/travel.md](docs/travel.md)).
 2. **The display**: [`firmware/minimed-coreink/README.md`](firmware/minimed-coreink/README.md)
    — flash a released build from the browser ([docs/staging-setup.md](docs/staging-setup.md))
    or build it with `arduino-cli`, then give it the home WiFi and the
-   proxy's address on its setup page.
+   proxy's address on its setup page. Its switch, buttons and screens at a
+   glance: [the controls of the display](docs/img/display-controls.svg).
 
 ## Documentation
 
