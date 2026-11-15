@@ -89,7 +89,9 @@ Write it in your own records against the hostname. There is no way to recover it
 
 The token is fetched **in the home**, once the Pi is on the household network: see the [Home Installation Checklist](home-installation-checklist.md), step 2. On the bench, prove only that the sign-in path works: run the command above, open the printed link, enter the VNC password, and check that the CareLink sign-in page loads. Then press Ctrl-C; the teardown runs. **Do not sign in.** Any account you would use is live somewhere else, and a sign-in here would end that session; the patient's care-partner account must sign in once only, at the home.
 
-Give every set a **dedicated care-partner account**: a CareLink account made for this proxy alone, which the patient invites as a care partner from their own account. The patient's invitation is the authorisation, and it is theirs to withdraw: removing the care partner cuts the set off without touching their own password. Nothing else may sign in with that account. One account carries one live session, so the same login in a phone app would knock the proxy out, or the other way round. Link exactly one patient to it: the proxy shows the first patient it finds.
+Give every set a **dedicated care-partner account**: a CareLink account made for this proxy alone, which the patient invites as a care partner from their own account. The patient's invitation is the authorisation, and it is theirs to withdraw: removing the care partner cuts the set off without touching their own password. Nothing else may sign in with that account. A care-partner account carries one live session, so the same login in a phone app would knock the proxy out, or the other way round. Link exactly one patient to it: the proxy shows the first patient it finds.
+
+That limit is the care-partner account's. The patient's **own** CareLink account has been proven to work in the proxy while the patient keeps using it as normal on their phone. A dedicated care-partner account is still the rule, for security: the token on the Pi then gives access to this one patient's data as a care partner, not to the patient's own account, and the patient can withdraw it without changing their password.
 
 Decide per set who holds that account's password and its two-factor device. Whoever performs a renewal needs both at that moment.
 
@@ -97,7 +99,7 @@ What the sign-in asks for varies, so tell whoever signs in to expect any of: a t
 
 Rehearsed on the home set on 2026-10-23 with a new care-partner account: 6 minutes from start to installed token. The proxy found the patient at once, and the renewal ports were closed again afterwards. As always, the first refresh, 3 hours later, is the proof.
 
-**One account, one live set.** A fresh browser login invalidates every other machine holding a session for that CareLink account. The trap is that it does not look that way: the old box keeps serving normally for hours, because it is still running on an access token that has not expired. Only when it next needs to refresh does it fail, with `ERROR: failed to refresh token`, and both displays go blank at once.
+**One account, one live set.** A fresh browser login with a care-partner account invalidates every other machine holding a session for that account. The trap is that it does not look that way: the old box keeps serving normally for hours, because it is still running on an access token that has not expired. Only when it next needs to refresh does it fail, with `ERROR: failed to refresh token`, and both displays go blank at once.
 
 So never renew on a spare while a live set is running on the same account. If you are replacing a set, move the token to the new box rather than logging in again, and treat the first successful *refresh* — not the first successful fetch — as proof that it worked.
 
@@ -425,7 +427,7 @@ Everything in the table is a consequence of that assumption rather than a defect
 
 **Can I clone a staged card to set up the next patient faster?** No. The card carries a CareLink token, a hostname and a VNC password, all of which are per-household. Cloning one puts one patient's credential in another patient's house. Image fresh and run the provisioner — it exists to make that cheap.
 
-**I set up a second Pi and now the first one has stopped.** Expected, and it will have looked fine for hours in between. One CareLink account carries one live session: the new login killed the old refresh token, but the old Pi kept serving until its access token ran out and its first refresh failed. You cannot run two sets from one account. Move the token to whichever box is staying, restart its proxy, and watch for a successful refresh in the journal.
+**I set up a second Pi and now the first one has stopped.** Expected, and it will have looked fine for hours in between. One CareLink account carries one live session: the new login killed the old refresh token, but the old Pi kept serving until its access token ran out and its first refresh failed. You cannot run two sets from one care-partner account. Move the token to whichever box is staying, restart its proxy, and watch for a successful refresh in the journal.
 
 **Everything looks healthy but there has been no new data since a specific date.** Ask before debugging. A changed CareLink password, a new phone, or a replaced sensor explains most of these, and no amount of log reading on the Pi will reveal it.
 

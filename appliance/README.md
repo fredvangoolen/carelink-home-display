@@ -273,9 +273,12 @@ it either way.
 prints "token data file already exists" and exits — no renewal, no error, no
 clue. `renew.sh` uses a fresh `mktemp` directory so that cannot happen.
 
-**One account carries one live session.** A fresh browser login invalidates
-every other machine holding a session for that CareLink account, so never
-renew on a spare while a live set is running. Move the token instead.
+**One account carries one live session.** A fresh browser login with a
+care-partner account invalidates every other machine holding a session for
+that account, so never renew on a spare while a live set is running. Move
+the token instead. (The patient's own account has been seen to work in the
+proxy alongside the patient's phone app; a dedicated care-partner account
+is still the rule, for security - see the runbook, staging step 5.)
 
 The trap is that it does not look that way. Checked minutes after a login,
 the old machine still serves data and the sessions appear to coexist - it is
