@@ -9,6 +9,11 @@ ExecStart=/opt/carelink-setup-ap/carelink-setup-ap.sh
 # Once per boot: a Pi that loses its network later is moved, and moving it
 # means a power cycle.
 Restart=no
+# The display's hotspot waits for this service to decide. Start it the moment
+# that has happened, not at its timer's first run two minutes into the boot:
+# measured 2026-11-15, the Pi's WiFi was up 17 s after boot and the hotspot
+# only at 126 s. "-": a Pi provisioned with TRAVEL_AP=0 has no such unit.
+ExecStopPost=-/usr/bin/systemctl start --no-block carelink-travel-ap.service
 
 [Install]
 WantedBy=multi-user.target

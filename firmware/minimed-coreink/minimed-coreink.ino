@@ -412,6 +412,53 @@ static bool plan_usable(const Config &c, bool fallback) {
   return false;
 }
 
+// One scan serves both plans. Each plan used to scan for itself, so a wake
+// with no plan A network in range scanned twice before joining the hotspot,
+// and a wake with nothing in range at all paid two scans to find that out.
+// Plain statics: they last one wake, which is as long as a scan stays true.
+struct ScanPick {
+  int     slot;      // strongest configured network of the plan, or -1
+  int     rssi;
+  int32_t channel;
+  uint8_t bssid[6];
+};
+static ScanPick scan_pick[2];      // [0] plan A, [1] plan B
+static bool     scan_done = false;
+static int      scan_seen = 0;
+
+static void scan_plans(const Config &c) {
+  scan_pick[0].slot = scan_pick[1].slot = -1;
+  scan_pick[0].rssi = scan_pick[1].rssi = -1000;
+  // The radio must be idle first: after a failed association it is still
+  // trying, and scanNetworks() then returns -2 (SCAN_FAILED) without looking
+  // at anything - which made the whole fallback silently useless.
+  WiFi.disconnect(false, false);
+  delay(100);
+  int found = WiFi.scanNetworks();
+  if (found < 0) {          // -1 running, -2 failed: let it settle, once
+    Serial.printf("wifi: scan returned %d, retrying\n", found);
+    WiFi.scanDelete();
+    delay(500);
+    found = WiFi.scanNetworks();
+  }
+  if (found < 0) found = 0;
+  for (int i = 0; i < found; i++) {
+    for (int sl = 0; sl < WIFI_SLOTS; sl++) {
+      if (!c.wifi[sl].usable() || WiFi.SSID(i) != c.wifi[sl].ssid) continue;
+      ScanPick &p = scan_pick[is_fallback(sl) ? 1 : 0];
+      if (WiFi.RSSI(i) > p.rssi) {
+        p.slot = sl;
+        p.rssi = WiFi.RSSI(i);
+        p.channel = WiFi.channel(i);
+        memcpy(p.bssid, WiFi.BSSID(i), 6);
+      }
+    }
+  }
+  WiFi.scanDelete();
+  scan_seen = found;
+  scan_done = true;
+}
+
 // Considers only the slots of one plan (fallback = plan B). The caller
 // records what worked into the RTC fields. Returns the slot index, or -1.
 static int wifi_connect(const Config &c, bool fallback, int remembered_slot,
@@ -436,45 +483,19 @@ static int wifi_connect(const Config &c, bool fallback, int remembered_slot,
   // 2. Scan, then try only networks actually in range, strongest first.
   //    Scanning beats trying-in-turn because it never waits out a timeout on
   //    a network that is not there at all.
-  // The radio must be idle first: after a failed association it is still
-  // trying, and scanNetworks() then returns -2 (SCAN_FAILED) without looking
-  // at anything - which made the whole fallback silently useless.
-  WiFi.disconnect(false, false);
-  delay(100);
-  int found = WiFi.scanNetworks();
-  if (found < 0) {          // -1 running, -2 failed: let it settle, once
-    Serial.printf("wifi: scan returned %d, retrying\n", found);
-    WiFi.scanDelete();
-    delay(500);
-    found = WiFi.scanNetworks();
-  }
-  if (found < 0) found = 0;
-  int best_slot = -1, best_rssi = -1000, best_idx = -1;
-  for (int i = 0; i < found; i++) {
-    for (int sl = 0; sl < WIFI_SLOTS; sl++) {
-      if (is_fallback(sl) != fallback) continue;
-      if (!c.wifi[sl].usable() || WiFi.SSID(i) != c.wifi[sl].ssid) continue;
-      if (WiFi.RSSI(i) > best_rssi) {
-        best_rssi = WiFi.RSSI(i); best_slot = sl; best_idx = i;
-      }
-    }
-  }
-  if (best_slot < 0) {
+  if (!scan_done) scan_plans(c);
+  const ScanPick &p = scan_pick[fallback ? 1 : 0];
+  if (p.slot < 0) {
     Serial.printf("wifi: no plan %c network in range (%d seen)\n",
-                  fallback ? 'B' : 'A', found);
-    WiFi.scanDelete();
+                  fallback ? 'B' : 'A', scan_seen);
     return -1;
   }
-  int32_t ch = WiFi.channel(best_idx);
-  uint8_t bssid[6];
-  memcpy(bssid, WiFi.BSSID(best_idx), 6);
   Serial.printf("wifi: scan picked slot %d (%s) rssi %d ch %d\n",
-                best_slot, c.wifi[best_slot].ssid.c_str(), best_rssi, (int)ch);
-  WiFi.scanDelete();
+                p.slot, c.wifi[p.slot].ssid.c_str(), p.rssi, (int)p.channel);
 
   // The caller records the channel and BSSID from the live connection, which
   // is authoritative; nothing is written back here.
-  return try_connect(c.wifi[best_slot], ch, bssid) ? best_slot : -1;
+  return try_connect(c.wifi[p.slot], p.channel, p.bssid) ? p.slot : -1;
 }
 
 // ------------------------------------------------------------------ alarms
@@ -1055,7 +1076,7 @@ static void arm_toggle_wake() {
 //
 // A plain struct, where MicroPython had to serialise JSON in and out of RTC
 // memory and re-hydrate it - about 120 lines that simply do not exist here.
-#define RTC_MAGIC 0x4D4D030Cu   // bump when the layout changes (gained fallback_age)
+#define RTC_MAGIC 0x4D4D030Du   // bump when the layout changes (gained wifi_fails)
 
 struct RtcState {
   uint32_t magic;
@@ -1070,6 +1091,7 @@ struct RtcState {
   int32_t  wifi_channel;
   uint8_t  wifi_bssid[6];
   uint8_t  fail_streak;     // consecutive cycles that produced no reading
+  uint8_t  wifi_fails;      // consecutive wakes that joined no network at all
   uint8_t  planb_cycles;    // poll cycles spent on the fallback since plan A was last tried
   uint16_t fallback_age;    // poll cycles since the proxy was last asked for the fallback; 0 = not yet
   State    snap;
@@ -1093,6 +1115,20 @@ static void note_link(int link) {
 }
 
 static bool link_fault_confirmed() { return rtc.fail_streak >= LINK_FAULT_STREAK; }
+
+// After a wake that joined no network at all, look again sooner than a whole
+// poll period. Measured 2026-11-15 on a trip: the Pi's hotspot was up 126 s
+// after the Pi was plugged in, the display had looked just before that, and
+// so it first joined at 375 s - four minutes of a hotspot nobody was using.
+//
+// The steps add up to one POLL_PERIOD_S, so the wake after the last of them
+// lands where the next ordinary poll would have been, and only the first
+// failure and that one count toward the fail streak: "No link" is announced
+// after the same 10 minutes as before, not after three quick looks. From
+// then on it is one look per period again - nothing is coming back soon, and
+// the battery matters more.
+static const uint16_t WIFI_RETRY_S[] = {60, 60, 60, 120};
+static const uint8_t  WIFI_RETRIES = sizeof(WIFI_RETRY_S) / sizeof(WIFI_RETRY_S[0]);
 
 // How often a scheduled refresh uses the slow full-clear waveform. The flash
 // is not required on every wake - the fast waveform writes the same image -
@@ -1495,8 +1531,22 @@ void setup() {
     // A transient WiFi failure skips this cycle rather than being fatal; the
     // next wake tries again. It must NEVER fall through to AP setup mode -
     // that would strand a working monitor over a hiccup.
-    Serial.printf("wifi: failed after %lld ms, skipping cycle\n", wifi_ms);
-    note_link(LINK_NO_PROXY);
+    if (rtc.wifi_fails < 255) rtc.wifi_fails++;
+    const bool quick = rtc.wifi_fails <= WIFI_RETRIES;
+    const uint32_t retry_s = quick ? WIFI_RETRY_S[rtc.wifi_fails - 1] : POLL_PERIOD_S;
+    Serial.printf("wifi: failed after %lld ms (%u in a row), skipping cycle, next look in %u s\n",
+                  wifi_ms, (unsigned)rtc.wifi_fails, (unsigned)retry_s);
+    // The remembered network is not even in range: forget it, or every wake
+    // from here on waits out a whole attempt on it before scanning. A network
+    // that is in range and merely refused us this once stays remembered.
+    if (scan_done && rtc.wifi_slot >= 0 &&
+        scan_pick[is_fallback(rtc.wifi_slot) ? 1 : 0].slot < 0) {
+      Serial.printf("wifi: slot %d is out of range, forgetting it\n", rtc.wifi_slot);
+      rtc.wifi_slot = -1;
+      rtc.wifi_channel = 0;
+    }
+    // The quick looks in between do not count; see WIFI_RETRY_S.
+    if (rtc.wifi_fails == 1 || !quick) note_link(LINK_NO_PROXY);
     if (link_fault_confirmed()) rtc.snap.link = LINK_NO_PROXY;
     rtc.snap.rawLink = LINK_NO_PROXY;
     rtc.snap.failStreak = rtc.fail_streak;
@@ -1515,13 +1565,14 @@ void setup() {
     // point, so returning to sleep without drawing leaves the screen blank
     // until some later cycle succeeds. The snapshot is still there and is
     // still the best information anyone has - draw it.
-    rtc.next_poll = time(nullptr) + POLL_PERIOD_S;
+    rtc.next_poll = time(nullptr) + retry_s;
     refresh_battery();
     compose(SCREEN_MAIN, rtc.snap, cfg, (rtc.cycle % FULL_REFRESH_EVERY) == 0,
             rtc.session_start);
     rtc.cycle++;
     sleep_until(rtc.next_poll);
   }
+  rtc.wifi_fails = 0;
   String local_ip;
   int wifi_rssi = 0;
   // Remember what worked, so the next wake is one attempt and no scan.

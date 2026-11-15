@@ -141,7 +141,9 @@ Core Ink firmware's README ("Plan B: the Pi's hotspot"); its fallback slot
 The radio makes this possible but narrow. The Pi 4's brcmfmac allows one
 station and one access point at once, on **one channel** (`iw list`:
 `#{ managed } <= 1, #{ AP } <= 1, #channels <= 1`), and the display is
-2.4 GHz only. So `carelink-travel-ap.timer`, every minute:
+2.4 GHz only. So `carelink-travel-ap.service` — started at boot as soon as
+the setup hotspot has decided it is not needed (measured 2026-11-15: the Pi's
+WiFi is up 17 s after boot), and then by its timer every minute:
 
 - moves the Pi's own WiFi to 2.4 GHz if it is on 5 GHz, by tying that
   profile to the strongest 2.4 GHz radio of the same network

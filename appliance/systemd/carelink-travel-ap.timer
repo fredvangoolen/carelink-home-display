@@ -2,7 +2,9 @@
 Description=Check every minute that the display's fallback hotspot is up
 
 [Timer]
-# Not before the setup hotspot has decided at boot (90 s wait).
+# The first run at boot normally comes sooner than this: carelink-setup-ap
+# starts the service as soon as it has decided (ExecStopPost there). This is
+# the net under that, after the setup hotspot's 90 s wait.
 OnBootSec=2min
 OnUnitActiveSec=1min
 

@@ -24,6 +24,8 @@ the appliance, but they are one design and only make sense together.
    joins one and gets no answer from the proxy), and switches to
    `carelink-travel` within the same wake. It stays there, trying plan A
    again once an hour, and goes back as soon as the proxy answers there.
+   A display that wakes before the hotspot is up finds nothing, and looks
+   again after 1, 2, 3 and 5 minutes, then every 5 minutes.
 
 Nobody configures the display for the trip. Optionally, the holiday WiFi can
 be put in the display's slot 1 through its setup page; then it uses plan A

@@ -45,6 +45,16 @@ for s in appliance/*.sh appliance/*/*.sh; do bash -n "$s"; done
 
 ## Not tested yet
 
+- **Quicker travel hand-over**: partly tested on 2026-11-15, on a trip, with
+  the Pi on a phone's WiFi. The Pi, rebooted: its WiFi up at 17 s, the
+  hotspot at 25.5 s (126 s before). The display, with the hotspot taken down
+  for two minutes under it: one scan, `failed after 10922 ms (1 in a row) ...
+  next look in 60 s`, `slot 2 is out of range, forgetting it`, 13.9 s awake;
+  60 s later no attempt on the forgotten network, one scan, joined in 4.8 s
+  and fetched, 7.9 s awake. Not yet seen: the later steps (60, 60, 120, then
+  300 s) during a longer outage, "No link" still appearing only after 10
+  minutes, and the setup hotspot still coming up on a boot with no network
+  now that its service has an `ExecStopPost`.
 - **The display's "Change settings" refill**: reopening the setup page on a
   configured board and checking that every field comes back filled in.
 - **The travel hotspot's revert**: on a network with no 2.4 GHz radio, the Pi

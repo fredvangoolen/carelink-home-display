@@ -152,9 +152,20 @@ lets the proxy close before the headers are read — so it stopped after the
 first header and left the rest in the body (62 bytes of JSON arrived as 133).
 It now also continues while data is buffered.
 
-A total WiFi failure still just skips the cycle and retries on the next wake —
+A total WiFi failure still just skips the cycle and retries on a later wake —
 it must never fall into AP setup mode, which would strand a working monitor
 over a hiccup.
+
+**After a wake that joined nothing, the board looks again sooner**: after 60,
+60, 60 and 120 s (`WIFI_RETRY_S`), then once per 300 s as before. Measured
+2026-11-15 on a trip, before this: the Pi's hotspot came up 126 s after the Pi
+was plugged in, the display had looked just before, and it first joined at
+375 s. The steps add up to one poll period, and only the first failure and the
+one at the 300 s mark count toward the fail streak, so "No link" still
+appears after the same 10 minutes. Two things keep those extra wakes short:
+one scan now serves both plans (each plan used to scan for itself), and a
+remembered network that the scan does not see at all is forgotten, so later
+wakes do not wait out the 8 s attempt on it before scanning.
 
 ## Finding the proxy by name: IPv4, looked up once
 
