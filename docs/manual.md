@@ -1,5 +1,7 @@
 # CareLink home display — user guide
 
+*[Nederlandstalige versie](handleiding.md)*
+
 A small screen in your home that shows the glucose reading of someone who
 wears a Medtronic MiniMed 770G or 780G insulin pump, so the people who care
 for them can see it at a glance, without a phone.

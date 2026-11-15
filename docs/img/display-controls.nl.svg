@@ -1,0 +1,182 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 820" width="1000" height="820"
+     font-family="Helvetica, Arial, sans-serif" role="img"
+     aria-labelledby="t d">
+  <title id="t">De bediening van het scherm</title>
+  <desc id="d">Vooraanzicht van het M5Stack Core Ink-scherm met zes genummerde
+  onderdelen: zijschakelaar, aan-knop, bovenknop, scherm, USB-C-aansluiting en
+  resetknop op de achterkant; daaronder de vier schermen in de volgorde waarin de
+  zijschakelaar ze doorloopt.</desc>
+
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0 0 L10 5 L0 10 z" fill="#c2410c"/>
+    </marker>
+    <g id="mini">
+      <rect width="100" height="100" rx="4" fill="#e3e7e3" stroke="#6b7680" stroke-width="1.5"/>
+    </g>
+  </defs>
+
+  <rect width="1000" height="820" fill="#ffffff"/>
+
+  <!-- ============================================================ device -->
+  <!-- body, with the recess on the right that holds the switch and button -->
+  <path d="M380 120 H620 Q640 120 640 140 V226 L634 232 V336 L640 342 V492
+           Q640 512 620 512 H380 Q360 512 360 492 V140 Q360 120 380 120 Z"
+        fill="#f5f5f3" stroke="#6b7680" stroke-width="2"/>
+  <!-- top button -->
+  <rect x="424" y="112" width="170" height="23" rx="6" fill="#fbfbfa" stroke="#6b7680" stroke-width="2"/>
+  <!-- mounting holes -->
+  <g fill="#f5f5f3" stroke="#9aa3ab" stroke-width="1.5">
+    <circle cx="392" cy="150" r="13"/><circle cx="608" cy="150" r="13"/>
+    <circle cx="392" cy="482" r="13"/><circle cx="608" cy="482" r="13"/>
+  </g>
+  <g fill="#c9ced2">
+    <circle cx="392" cy="150" r="7"/><circle cx="608" cy="150" r="7"/>
+    <circle cx="392" cy="482" r="7"/><circle cx="608" cy="482" r="7"/>
+  </g>
+  <!-- side switch and power button -->
+  <rect x="634" y="246" width="13" height="30" rx="3" fill="#2b2f33"/>
+  <rect x="634" y="300" width="8" height="22" rx="2" fill="#c9ced2" stroke="#6b7680" stroke-width="1.2"/>
+  <!-- USB-C socket on the underside -->
+  <rect x="484" y="507" width="32" height="8" rx="4" fill="#2b2f33"/>
+
+  <!-- screen -->
+  <rect x="400" y="200" width="198" height="195" fill="#e3e7e3" stroke="#6b7680" stroke-width="1.5"/>
+  <g fill="#1f2933">
+    <text x="412" y="282" font-size="76" font-weight="bold" letter-spacing="-2">112</text>
+    <path d="M540 255 h26 v-11 l20 17 l-20 17 v-11 h-26 z"/>
+    <text x="414" y="310" font-size="17">mg/dL</text>
+    <rect x="410" y="322" width="178" height="1.5"/>
+    <text x="412" y="362" font-size="13">Act. insulin</text>
+    <text x="588" y="362" font-size="20" text-anchor="end">1.2 U</text>
+    <text x="412" y="385" font-size="11.5">Updated 3 min ago</text>
+    <text x="588" y="385" font-size="11.5" text-anchor="end">13:41</text>
+  </g>
+
+  <!-- ============================================== markers on the drawing -->
+  <g stroke="#c2410c" stroke-width="1.5" fill="none">
+    <path d="M649 261 H661"/>
+    <path d="M644 311 H661"/>
+    <path d="M509 99 V110"/>
+    <path d="M339 297 H402"/>
+    <path d="M500 517 V531"/>
+  </g>
+  <circle cx="404" cy="297" r="2.5" fill="#c2410c"/>
+  <g font-size="13" font-weight="bold" text-anchor="middle">
+    <g fill="#c2410c">
+      <circle cx="672" cy="261" r="11"/><circle cx="672" cy="311" r="11"/>
+      <circle cx="509" cy="88" r="11"/><circle cx="328" cy="297" r="11"/>
+      <circle cx="500" cy="542" r="11"/>
+    </g>
+    <g fill="#ffffff">
+      <text x="672" y="265.5">1</text><text x="672" y="315.5">2</text>
+      <text x="509" y="92.5">3</text><text x="328" y="301.5">4</text>
+      <text x="500" y="546.5">5</text>
+    </g>
+  </g>
+
+  <!-- ====================================================== legend, right -->
+  <g fill="#1f2933" font-size="13.5">
+    <circle cx="726" cy="145" r="11" fill="#c2410c"/>
+    <text x="726" y="149.500" font-size="13" font-weight="bold" fill="#ffffff" text-anchor="middle">1</text>
+    <text x="746" y="150" font-size="16" font-weight="bold">Zijschakelaar</text>
+    <text x="746" y="172" fill="#4b5560">De enige knop die je nodig hebt.</text>
+    <path d="M748 188 h10 l-5 8 z" fill="#c2410c"/>
+    <text x="766" y="197"><tspan font-weight="bold">Omlaag duwen:</tspan> volgend scherm</text>
+    <path d="M748 218 h10 l-5 -8 z" fill="#c2410c"/>
+    <text x="766" y="219"><tspan font-weight="bold">Omhoog duwen:</tspan> vorig scherm</text>
+    <circle cx="753" cy="236" r="4.5" fill="#c2410c"/>
+    <text x="766" y="241"><tspan font-weight="bold">Indrukken:</tspan> niet nodig</text>
+
+    <circle cx="726" cy="295" r="11" fill="#c2410c"/>
+    <text x="726" y="299.500" font-size="13" font-weight="bold" fill="#ffffff" text-anchor="middle">2</text>
+    <text x="746" y="300" font-size="16" font-weight="bold">Aan-knop</text>
+    <text x="746" y="322" fill="#4b5560">Start het scherm opnieuw nadat het</text>
+    <text x="746" y="340" fill="#4b5560">met de resetknop gestopt werd of</text>
+    <text x="746" y="358" fill="#4b5560">uitgevallen is: kort indrukken.</text>
+  </g>
+
+  <!-- ======================================================= legend, left -->
+  <g fill="#1f2933" font-size="13.5">
+    <circle cx="41" cy="95" r="11" fill="#c2410c"/>
+    <text x="41" y="99.500" font-size="13" font-weight="bold" fill="#ffffff" text-anchor="middle">3</text>
+    <text x="61" y="100" font-size="16" font-weight="bold">Bovenknop</text>
+    <text x="61" y="122" fill="#4b5560">Wordt niet gebruikt.</text>
+
+    <circle cx="41" cy="175" r="11" fill="#c2410c"/>
+    <text x="41" y="179.500" font-size="13" font-weight="bold" fill="#ffffff" text-anchor="middle">4</text>
+    <text x="61" y="180" font-size="16" font-weight="bold">Scherm</text>
+    <text x="61" y="202" fill="#4b5560">Houdt zijn laatste beeld, ook zonder</text>
+    <text x="61" y="220" fill="#4b5560">stroom. Kijk naar de tijd erop: die</text>
+    <text x="61" y="238" fill="#4b5560">hoort maar enkele minuten oud te zijn.</text>
+
+    <circle cx="41" cy="291" r="11" fill="#c2410c"/>
+    <text x="41" y="295.500" font-size="13" font-weight="bold" fill="#ffffff" text-anchor="middle">5</text>
+    <text x="61" y="296" font-size="16" font-weight="bold">USB-C-aansluiting</text>
+    <text x="61" y="318" fill="#4b5560">Aan de onderkant. Gebruik voor stroom</text>
+    <text x="61" y="336" fill="#4b5560">de adapter, niet de USB van een computer.</text>
+
+    <circle cx="41" cy="389" r="11" fill="#c2410c"/>
+    <text x="41" y="393.500" font-size="13" font-weight="bold" fill="#ffffff" text-anchor="middle">6</text>
+    <text x="61" y="394" font-size="16" font-weight="bold">Resetknop</text>
+    <text x="61" y="416" fill="#4b5560">Een klein knopje op de achterkant.</text>
+    <text x="61" y="434" fill="#4b5560">Het stopt het scherm. Aan de kabel</text>
+    <text x="61" y="452" fill="#4b5560">start het vanzelf opnieuw; zonder</text>
+    <text x="61" y="470" fill="#4b5560">kabel start knop 2 het opnieuw.</text>
+  </g>
+  <!-- small back view -->
+  <g>
+    <rect x="62" y="488" width="60" height="84" rx="6" fill="#f5f5f3" stroke="#6b7680" stroke-width="1.5"/>
+    <circle cx="92" cy="552" r="4" fill="#2b2f33"/>
+    <path d="M97 552 H137" stroke="#c2410c" stroke-width="1.5"/>
+    <circle cx="148" cy="552" r="11" fill="#c2410c"/>
+    <text x="148" y="556.500" font-size="13" font-weight="bold" fill="#ffffff" text-anchor="middle">6</text>
+    <text x="92" y="590" font-size="12" fill="#4b5560" text-anchor="middle">achterkant</text>
+  </g>
+
+  <!-- ===================================================== the four screens -->
+  <rect x="30" y="612" width="940" height="1" fill="#d5dade"/>
+  <text x="30" y="642" font-size="16" font-weight="bold" fill="#1f2933">De vier schermen, in de volgorde waarin de zijschakelaar ze doorloopt</text>
+
+  <g font-size="10.5" fill="#1f2933">
+    <g transform="translate(180 662)">
+      <use href="#mini"/>
+      <text x="10" y="50" font-size="34" font-weight="bold">112</text>
+      <path d="M72 36 h8 v-4 l8 6.500 l-8 6.500 v-4 h-8 z"/>
+      <text x="10" y="68">mg/dL</text>
+      <text x="10" y="90">3 min ago</text>
+    </g>
+    <g transform="translate(360 662)">
+      <use href="#mini"/>
+      <text x="10" y="24">In range</text><text x="90" y="24" text-anchor="end">89 %</text>
+      <text x="10" y="44">Above</text><text x="90" y="44" text-anchor="end">9 %</text>
+      <text x="10" y="64">Below</text><text x="90" y="64" text-anchor="end">2 %</text>
+      <text x="10" y="84">Average</text><text x="90" y="84" text-anchor="end">131</text>
+    </g>
+    <g transform="translate(540 662)">
+      <use href="#mini"/>
+      <text x="10" y="28">Reservoir</text><text x="90" y="28" text-anchor="end">82 %</text>
+      <text x="10" y="54">Battery</text><text x="90" y="54" text-anchor="end">100 %</text>
+      <text x="10" y="80">Sensor</text><text x="90" y="80" text-anchor="end">110 h</text>
+    </g>
+    <g transform="translate(720 662)">
+      <use href="#mini"/>
+      <text x="10" y="28">WiFi</text><text x="90" y="28" text-anchor="end">home</text>
+      <text x="10" y="54">Signal</text><text x="90" y="54" text-anchor="end">good</text>
+      <text x="10" y="80">Battery</text><text x="90" y="80" text-anchor="end">100 %</text>
+    </g>
+  </g>
+
+  <g stroke="#c2410c" stroke-width="2" fill="none" marker-end="url(#arrow)">
+    <path d="M290 712 H350"/><path d="M470 712 H530"/>
+    <path d="M650 712 H710"/>
+  </g>
+
+  <g font-size="13.5" font-weight="bold" fill="#1f2933" text-anchor="middle">
+    <text x="230" y="782">Glucose</text>
+    <text x="410" y="782">Statistiek</text>
+    <text x="590" y="782">Pomp</text>
+    <text x="770" y="782">Device &amp; Network</text>
+  </g>
+  <text x="500" y="806" font-size="12.5" fill="#4b5560" text-anchor="middle">Omlaag volgt de pijlen, omhoog gaat terug; na het laatste scherm komt weer het eerste. Bij de volgende meting keert het scherm vanzelf terug naar Glucose.</text>
+</svg>
