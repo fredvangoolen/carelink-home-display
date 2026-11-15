@@ -194,12 +194,18 @@ them; it does not remove ones an earlier run installed.
 
 ## Renewing a token
 
-First make sure one is needed. A proxy that could not start, for example
-after a power cut that took the router down too, says *Valid token required*
-but keeps retrying the stored token by itself: after 1 minute, then doubling
-up to every 30 minutes. If the display says *CareLink login needed* right
-after a power cut, restart the proxy (`sudo systemctl restart
-carelink2-proxy`) and watch the journal before arranging a renewal.
+First make sure one is needed: the proxy's status page (`http://<pi>:8081/`)
+says which case it is, with the time the data stopped on the line below.
+
+- *Logged in, but no data from CareLink*: the Pi cannot reach CareLink, for
+  example after a power cut that took the router down too. No renewal; the
+  proxy retries every minute and picks up as soon as the network is back.
+- *Valid token required*: CareLink answered and refused. The proxy still
+  retries the stored token by itself, after 1 minute, then doubling up to
+  every 30 minutes, but if the line below says *refused the token refresh*
+  the session is over and only a renewal brings it back. Most often the
+  same account was signed in on another device (see "One account carries
+  one live session" below).
 
 ```bash
 /opt/carelink-renewal/renew.sh

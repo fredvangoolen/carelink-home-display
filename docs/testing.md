@@ -55,6 +55,15 @@ for s in appliance/*.sh appliance/*/*.sh; do bash -n "$s"; done
   300 s) during a longer outage, "No link" still appearing only after 10
   minutes, and the setup hotspot still coming up on a boot with no network
   now that its service has an `ExecStopPost`.
+- **The proxy's status line and quick retry after an outage**: dry-run on
+  the desktop on 2026-11-15 against a scripted stub client (network down,
+  data, connection error, refused refresh, dead token, network down again):
+  the page showed each state with its reason, the recovery form appeared only
+  while a token was wanted, retries stayed at 60 s while CareLink was out of
+  reach and doubled (60, 120, 240 s) only after a refusal, and
+  `/carelink/nohistory` stayed `""` without data. Not yet seen on a Pi: a
+  real refused refresh from CareLink (the HTTP code it answers is assumed to
+  be 400, 401 or 403), and a real network outage.
 - **The display's "Change settings" refill**: reopening the setup page on a
   configured board and checking that every field comes back filled in.
 - **The travel hotspot's revert**: on a network with no 2.4 GHz radio, the Pi

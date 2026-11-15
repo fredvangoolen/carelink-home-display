@@ -41,9 +41,10 @@
 #    by Frederik in October and November 2026 for carelink-home-display
 #    (https://github.com/fredvangoolen/carelink-home-display): among other
 #    things the /carelink/fallback endpoint, a token accepted by POST only
-#    while one is needed, no cross-origin access, and the handling of clock
-#    jumps and of error answers from CareLink. That repository's history
-#    has each change with its date.
+#    while one is needed, no cross-origin access, the handling of clock
+#    jumps and of error answers from CareLink, a status page that says when
+#    the data stopped and why, and a quick retry after a network outage.
+#    That repository's history has each change with its date.
 #
 #  Modifications copyright 2026, Frederik
 #
@@ -99,7 +100,11 @@ RETRY_INTERVAL  = 120
 TOKENFILE = "logindata.json"
 wait_for_params = True
 # A failed start is retried with the stored token, not only on a new one.
-# Doubling from the first value up to the cap.
+# Doubling from the first value up to the cap - but only when CareLink
+# answered and refused. When it could not be reached at all (no network,
+# DNS, a 5xx) the retry stays at the first value: that costs CareLink
+# nothing, and backing off there kept a Pi on 30-minute waits after its
+# network came back (carelink-01, 2026-11-15).
 INIT_RETRY_FIRST_S = 60
 INIT_RETRY_MAX_S   = 1800
 
@@ -108,7 +113,13 @@ STATUS_INIT     = "Initialization"
 STATUS_DO_LOGIN = "Performing login"
 STATUS_LOGIN_OK = "Login successful"
 STATUS_NEED_TKN = "Valid token required"
+STATUS_NO_DATA  = "Logged in, but no data from CareLink"
 g_status = STATUS_INIT
+# One line under the status: since when, and why. The status alone said
+# "Login successful" through five hours of refused refreshes (the reference Pi,
+# 2026-11-15), while the displays got nothing.
+g_detail = ""
+g_last_data = None          # wall-clock time of the last good download
 
 recentData = None
 verbose = False
@@ -167,6 +178,10 @@ def fallback_network():
    return {"ssid": FALLBACK_SSID, "psk": psk}
 
 
+def since(t):
+   return time.strftime("%Y-%m-%d %H:%M", time.localtime(t)) if t else "this start"
+
+
 def webgui(status,action=None,error=""):
    head =  '<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd"> \n \
             <html><head><title>Carelink Client 2 Proxy</title> \n \
@@ -184,7 +199,9 @@ def webgui(status,action=None,error=""):
             <td style="background-color: white;"></td><td style="background-color: white;"></td></tr> \n \
             <tr style="vertical-align: top; background-color: rgb(230, 230, 255);"> \n \
             <td style="width: 300px;">%s</td> \n \
-            </tbody></table><br> \n' % (status)
+            <tr style="vertical-align: top; font-size: 14px;"> \n \
+            <td style="width: 300px;">%s</td> \n \
+            </tbody></table><br> \n' % (status, html.escape(g_detail))
 
    form = ""
    if action is not None:
@@ -206,8 +223,9 @@ def webgui(status,action=None,error=""):
             <span style="font-family: Helvetica,Arial,sans-serif; color: white;"><a style="color: white;" href=https://github.com/fredvangoolen/carelink-home-display>carelink-home-display</a> proxy | version %s | based on <a style="color: white;" href=https://github.com/ondrej1024/carelink-python-client>carelink_client2_proxy</a></span></td></tr> \n \
             </tbody></table></body></html>' % VERSION
 
-   html = head + body + form + tail
-   return html
+   # Not called "html": that name is the module escaping g_detail above.
+   page = head + body + form + tail
+   return page
 
 
 #################################################
@@ -423,6 +441,7 @@ while True:
    # Login to Carelink server
    if client.init():
       g_status = STATUS_LOGIN_OK
+      g_detail = ""
       init_retry_s = INIT_RETRY_FIRST_S
 
       # Infinite loop requesting Carelink data periodically
@@ -435,19 +454,44 @@ while True:
             recentData = client.getRecentData()
             if recentData != None and client.getLastResponseCode() == HTTPStatus.OK:
                log.debug("New data received")
+               g_status = STATUS_LOGIN_OK
+               g_last_data = time.time()
+               g_detail = "Last data from CareLink: %s" % since(g_last_data)
             elif client.getLastResponseCode() == HTTPStatus.FORBIDDEN or client.getLastResponseCode() == HTTPStatus.UNAUTHORIZED:
                # Authorization error occured
                log.error("ERROR: failed to get data (Authotization error, response code %d)" % client.getLastResponseCode())
+               recentData = None
+               g_detail = "No data since %s: CareLink refused the token (HTTP %d)." % (since(g_last_data), client.getLastResponseCode())
                break
             else:
                # Connection error occured
-               log.error("ERROR: failed to get data (Connection error, response code %d)" % client.getLastResponseCode())
+               log.error("ERROR: failed to get data (Connection error, response code %s)" % client.getLastResponseCode())
                recentData = None
+               g_status = STATUS_NO_DATA
+               g_detail = "No data since %s: CareLink answered HTTP %s; retrying every minute." % (since(g_last_data), client.getLastResponseCode())
                time.sleep(60)
                continue
+         except carelink_client2.TokenRefreshRefused as e:
+            # The session is over; asking again every minute will not revive
+            # it. Fall through to "Valid token required", which shows the
+            # recovery form and still retries the stored token now and then.
+            log.error(e)
+            recentData = None
+            g_detail = ("No data since %s: CareLink refused the token refresh (HTTP %d). "
+                        "A new sign-in is needed. A sign-in with the same CareLink account "
+                        "on another device ends this session." % (since(g_last_data), e.status_code))
+            break
          except Exception as e:
             log.error(e)
             recentData = None
+            g_status = STATUS_NO_DATA
+            if isinstance(e, carelink_client2.requests.exceptions.RequestException):
+               reason = "cannot reach CareLink (%s)" % type(e).__name__
+            else:
+               # Includes a refresh answered with a code not taken as a
+               # refusal: say what happened rather than guess.
+               reason = str(e)
+            g_detail = "No data since %s: %s; retrying every minute." % (since(g_last_data), reason)
             time.sleep(60)
             continue
             
@@ -485,13 +529,28 @@ while True:
    # accepting a new token, and also retry the stored one, backing off to
    # INIT_RETRY_MAX_S so a token that really is dead costs one request per
    # half hour.
-   log.info(STATUS_NEED_TKN)
-   g_status = STATUS_NEED_TKN
-   log.info("Retrying with the stored token in %d s" % init_retry_s)
-   retry_at = time.time() + init_retry_s
-   init_retry_s = min(init_retry_s * 2, INIT_RETRY_MAX_S)
+   recentData = None
+   if client.initFailedTransient():
+      # Not a token problem: CareLink could not be reached. Keep the short
+      # retry so data is back within a minute of the network.
+      g_status = STATUS_NO_DATA
+      g_detail = "No data since %s: cannot reach CareLink; retrying every minute." % since(g_last_data)
+      retry_s = INIT_RETRY_FIRST_S
+      log.info("CareLink not reachable; retrying in %d s" % retry_s)
+   else:
+      log.info(STATUS_NEED_TKN)
+      g_status = STATUS_NEED_TKN
+      # Keep the more specific reason a refused refresh already gave.
+      if "refused the token" not in g_detail:
+         g_detail = "No data since %s: CareLink did not accept the stored token." % since(g_last_data)
+      retry_s = init_retry_s
+      init_retry_s = min(init_retry_s * 2, INIT_RETRY_MAX_S)
+      log.info("Retrying with the stored token in %d s" % retry_s)
+   # Monotonic: a Pi without an RTC jumps its wall clock when NTP arrives,
+   # which made this wait end early or late.
+   retry_at = time.monotonic() + retry_s
    wait_for_params = True
-   while wait_for_params and time.time() < retry_at:
+   while wait_for_params and time.monotonic() < retry_at:
       time.sleep(0.1)
 
 # Exit         
