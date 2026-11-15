@@ -48,9 +48,12 @@ published in two places:
 1. **A web page that flashes it from the browser.** Open the project's flasher
    page in Chrome or Edge on a laptop, connect the Core Ink with a USB-C data
    cable, press the button. The page explains the one question it asks (erase
-   or not). The address is `https://<owner>.github.io/carelink-home-display/`.
-   It exists only while the repository is public and has had a release.
-2. **The release itself**, under *Releases* on GitHub: four `.bin` files and
+   or not). The address is
+   [https://fredvangoolen.github.io/carelink-home-display/](https://fredvangoolen.github.io/carelink-home-display/).
+   For an update of a display in use, choose *do not erase*: its WiFi and
+   proxy settings stay. A fork that publishes its own releases gets its own
+   page at `https://<owner>.github.io/carelink-home-display/`.
+2. **The release itself**, under [*Releases*](https://github.com/fredvangoolen/carelink-home-display/releases/latest) on GitHub: four `.bin` files and
    their checksums, for flashing with `esptool` if the page cannot be used:
 
    ```bash

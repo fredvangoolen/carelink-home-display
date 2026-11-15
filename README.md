@@ -25,14 +25,24 @@ network; the display never talks to Medtronic. The two agree on two URLs:
 `GET /carelink/nohistory` (the data) and `GET /carelink/fallback` (the Pi's
 travel hotspot, see [docs/travel.md](docs/travel.md)).
 
+## Put the firmware on a display from your browser
+
+**[Flash the CareLink home display](https://fredvangoolen.github.io/carelink-home-display/)**: open the page
+in Chrome or Edge, connect the Core Ink with a USB-C cable and press
+*Install*. No Arduino, no compiler, no command line; about a minute. The
+same page updates a display that is already in use, keeping its WiFi and
+proxy settings (choose *do not erase*). The page always carries the
+[latest release](https://github.com/fredvangoolen/carelink-home-display/releases/latest).
+
 ## Getting started
 
 1. **The Pi**: [`appliance/README.md`](appliance/README.md) — one script,
    `appliance/provision.sh`, then a CareLink login in a browser.
-2. **The display**: [`firmware/minimed-coreink/README.md`](firmware/minimed-coreink/README.md)
-   — flash a released build from the browser ([docs/staging-setup.md](docs/staging-setup.md))
-   or build it with `arduino-cli`, then give it the home WiFi and the
-   proxy's address on its setup page. Its switch, buttons and screens at a
+2. **The display**: flash it from the browser with
+   [the flasher page](https://fredvangoolen.github.io/carelink-home-display/), then give it the home WiFi
+   and the proxy's address on its setup page. Building it yourself with
+   `arduino-cli` is only needed to change the firmware:
+   [`firmware/minimed-coreink/README.md`](firmware/minimed-coreink/README.md). Its switch, buttons and screens at a
    glance: [the controls of the display](docs/img/display-controls.svg).
 
 ## Documentation

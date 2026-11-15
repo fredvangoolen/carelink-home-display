@@ -86,7 +86,8 @@ for s in appliance/*.sh appliance/*/*.sh; do bash -n "$s"; done
   exercised.
 - **`STAY_HOME=1 ./provision.sh`**: added when the two repositories were
   merged; syntax-checked only, not yet run on a Pi.
-- **The browser flasher page** (`docs/flasher/`): it can only be served once
-  the repository is public and has a release, so it has never flashed a
-  board. The first release should be tried on a spare board, both with and
-  without erasing.
+- **The browser flasher page** (`docs/flasher/`): first release `v0.1-arduino`
+  published on 2026-11-15 and used the same day to update a display in use,
+  *without* erasing: flashed without a problem, settings kept. Not yet tried:
+  *with* erasing, on a new or wiped board, which should end in the setup
+  portal.

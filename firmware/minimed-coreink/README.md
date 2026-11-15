@@ -1,5 +1,18 @@
 # Core Ink monitor — Arduino port
 
+## Installing it
+
+**To put this firmware on a Core Ink you do not need anything from this
+directory.** Use the [browser flasher](https://fredvangoolen.github.io/carelink-home-display/): Chrome or
+Edge, a USB-C data cable, one button, about a minute. It installs the
+[latest release](https://github.com/fredvangoolen/carelink-home-display/releases/latest) and can update a display in use
+without touching its settings. Details, and the `esptool` fallback, are in
+[docs/staging-setup.md](../../docs/staging-setup.md).
+
+The rest of this README is for changing the firmware.
+
+## About this port
+
 A C++ port of a MicroPython program, `main_m5coreink.py`, and what the Core
 Inks run. That program is no longer in this repository; where this README or
 a comment says "the MicroPython build" or names that file, it is explaining
