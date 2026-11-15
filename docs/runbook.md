@@ -227,7 +227,7 @@ Two things happen on site: the network, and activating the proxy with the patien
 
 The last row needs nothing from you on the day. The Pi runs `carelink-travel` all the time, next to its own connection; the display learned its password from the proxy at home, and switches to it by itself when the household network does not get it to the proxy, trying the household network again every hour. [travel.md](travel.md) has the whole picture and its limits, the main one being that the Pi moves itself to 2.4 GHz to do this.
 
-Whether a WiFi blocks devices from talking to each other shows on the display's Communication screen: *Proxy answer: no answer* with a good Signal row on *Device & Network* is the sign. Before believing it, check the WiFi name on the display character by character: the one time this was seen, at a holiday house, it was a mistyped name and not the router ([lessons.md](lessons.md)).
+Whether a WiFi blocks devices from talking to each other shows on the display: *No link to proxy* at the bottom of the main screen, with a good Signal row on *Device & Network*, is the sign. Before believing it, check the WiFi name on the display character by character: the one time this was seen, at a holiday house, it was a mistyped name and not the router ([lessons.md](lessons.md)).
 
 ### Network
 
@@ -260,7 +260,7 @@ For the display: somewhere it is seen in passing, such as a kitchen or a hallway
 
 The household needs to know four things. Resist telling them more — everything else is your job, and a long briefing makes people afraid to touch it.
 
-**1. What it shows.** A glucose reading, a trend arrow and the time it was taken. Flick the side switch to page through pump battery, reservoir, sensor life, the network screen and, last, the Communication screen, which is for when you ask them to read something out.
+**1. What it shows.** A glucose reading, a trend arrow and the time it was taken. Flick the side switch to page through the glucose statistics, pump battery, reservoir and sensor life, and the network screen, which is for when you ask them to read something out.
 
 **2. What normal looks like.** The number is a few minutes old, always. When there is no reading, a line at the bottom says why, and only after about 15 minutes, so a short gap never shows: *No sensor data* (sensor or pump not reaching the phone; it clears itself), *Proxy has no data*, *CareLink login needed* (call you), *No link to proxy* (the display cannot reach the Pi), and *No new reading for …* (everything answers, but the reading has not changed for 20 minutes or more). *No sensor data* also says how long it has lasted.
 
@@ -298,34 +298,19 @@ sudo ls -l /var/lib/carelink/
 
 In order: is it running, is it getting data, what has it been saying, is anything exposed that should not be, and when was the token last written. A token mtime that keeps advancing is the healthiest single signal in the system — it means the refresh chain is alive.
 
-### The display's Communication screen
+### Reading a fault from a distance
 
-The last screen on the display, after *Device & Network*, follows the chain pump → phone → CareLink → proxy → display, one hop per row. The household can read it to you over the phone, and in most cases it says which hop broke before you open a shell. It is updated on every poll, failed ones included, so it is current exactly when something is wrong.
+Two things say which link in the chain pump → phone → CareLink → proxy → display broke, usually before you open a shell: the line at the bottom of the display's main screen, which the household can read out to you, and the proxy's page at `http://<pi>.local:8081/`, which says since when there is no data and why.
 
-| Row | What it means |
-| --- | --- |
-| Pump near phone | the pump is within Bluetooth reach of the patient's phone |
-| Phone online | the phone is in contact with CareLink |
-| Last upload | how long ago the phone last uploaded to CareLink |
-| Sensor | the sensor state as Medtronic reports it; *ok* when healthy |
-| Proxy answer | what the proxy answered on this poll, before the display's three-poll smoothing |
-| Good fetch | when the display last got a real answer, and how many polls failed since |
-| Fetch / WiFi | this poll's fetch time and WiFi connect time |
-| Proxy IP | the address the display remembered for the Pi |
-| Clock fix | how far the clock had to be corrected from the proxy |
+| Bottom of the main screen | Where it broke | Proxy page |
+| --- | --- | --- |
+| *No sensor data*, with how long | sensor, pump, or the patient's phone not uploading; clears itself | *Login successful*, last data recent |
+| *No new reading for …* | everything answers, but the reading has not changed for 20 minutes: the patient's phone app, or a proxy stuck on one fetch | if the phone is fine: restart the proxy |
+| *Proxy has no data* | the Pi cannot reach CareLink: its own internet connection, or a CareLink outage | *Logged in, but no data from CareLink*, with the reason; it retries every minute |
+| *CareLink login needed* | the token: CareLink refused it | *Valid token required*; *refused the token refresh* means a renewal is needed |
+| *No link to proxy* | the Pi is down, or the display cannot reach it | the page does not open either, or it does and the WiFi is the problem: check the Signal row on *Device & Network* |
 
-How the common faults look:
-
-| Fault | What the screen shows |
-| --- | --- |
-| Phone too far from the pump | *Pump near phone: no*; *Last upload* growing |
-| Phone offline | *Phone online: no*; *Last upload* growing |
-| Proxy stuck on one fetch | *Good fetch: now* and *Proxy answer: reading*, but *Last upload* keeps growing: restart the proxy |
-| Pi down, or the display cannot reach it | *Proxy answer: no answer*, *Good fetch* growing with a failure count |
-| Token gone | *Proxy answer: login needed* |
-| Display's WiFi gone | *Fetch / WiFi: no WiFi* |
-
-The main screen calls out the same situations at the bottom: *No new reading for …* once the reading is 20 minutes old while everything answers, and *No sensor data* with how long it has lasted.
+A message appears only after about 15 minutes, so a short gap never shows. On the bench, the serial log's `comms` line has the same chain in raw form (pump-phone, phone-cloud, the proxy's answer, the failure streak and the proxy address).
 
 ### Symptoms
 

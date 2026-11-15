@@ -74,8 +74,12 @@ enum { BATT_EMPTY = 0, BATT_HALF = 1, BATT_FULL = 2 };
 // Screen order, cycled endlessly by the toggle in either direction. Pump
 // sits between the glucose stats and the technical screen, as in the
 // MicroPython build.
+// There was a fifth, Communication (pump -> phone -> CareLink -> proxy, one
+// hop per row). Removed in November 2026: not useful enough for the person
+// holding the display, and confusing to them; the same chain is in the
+// serial log's "comms" line.
 enum { SCREEN_MAIN = 0, SCREEN_STATS = 1, SCREEN_PUMP = 2, SCREEN_INFO = 3,
-       SCREEN_COMMS = 4, SCREEN_COUNT = 5 };
+       SCREEN_COUNT = 4 };
 
 // Which way a flick moves through that list. Down walks forward in the order
 // above; up walks back the way you came, which is the only reason the second

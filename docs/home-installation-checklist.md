@@ -65,7 +65,7 @@ Check these by phone or message beforehand. Without any one of them, the visit e
 ## 5. Prove it
 
 - [ ] The display shows the patient's name, a current reading, and a time within a few minutes of the clock.
-- [ ] **The Communication screen** (last page, after *Device & Network*) reads: *Pump near phone: yes*, *Phone online: yes*, *Proxy answer: reading*, *Good fetch: now* or a few minutes ago, and no failures.
+- [ ] There is no message on the line at the bottom of the main screen, and the proxy's page, `http://carelink-<name>.local:8081/`, reads *Login successful* with *Last data from CareLink* a few minutes ago.
 - [ ] **Power cut, in front of them:** unplug both, wait 10 seconds, plug both back in. A current reading must return within 10 minutes.
 - [ ] In Connect's remote shell: `systemctl is-active carelink2-proxy` reads `active`, and `ss -tlnp | grep -E ':6080|:5900'` prints nothing.
 
@@ -79,7 +79,7 @@ Check these by phone or message beforehand. Without any one of them, the visit e
 
 ## If something goes wrong on site
 
-Look first at the display's **Communication screen**, the last page: it follows pump → phone → CareLink → proxy → display and usually names the broken hop. *Pump near phone: no* or *Phone online: no* is the patient's phone, not the set. *Proxy answer: no answer* is the Pi or the WiFi. *Proxy answer: login needed* is the token. *Good fetch: now* while *Last upload* keeps growing means the proxy is stuck: restart it. The [runbook](runbook.md#the-displays-communication-screen) explains every row.
+Look first at the line at the bottom of the display's main screen, then at the proxy's page, `http://carelink-<name>.local:8081/`, which says since when there is no data and why. *No sensor data* is the sensor, the pump or the patient's phone, not the set. *No link to proxy* is the Pi or the WiFi. *CareLink login needed* is the token. *Proxy has no data* is the Pi's own internet connection, or CareLink. The [runbook](runbook.md#reading-a-fault-from-a-distance) has the details.
 
 | You see | Do |
 | --- | --- |

@@ -678,85 +678,12 @@ void draw_info_screen(LovyanGFX &g, const State &s, const Config &c,
   }
 }
 
-// The chain from pump to panel, one hop per row, for working out WHERE it
-// broke without a laptop: pump -> phone -> CareLink -> proxy -> display.
-// Plain words where the raw value would mean nothing to the person holding
-// the device; times as ages, because "12:03" needs the current time to read.
-static void ago_or_dash(time_t t, char *out, size_t n) {
-  time_t now = time(nullptr);
-  if (!t || now < 1600000000) { snprintf(out, n, "--"); return; }
-  long age = (long)(now - t);
-  if (age < 0) age = 0;
-  if (age < 60) { snprintf(out, n, "now"); return; }
-  char a[24];
-  age_txt(age, a, sizeof(a));
-  snprintf(out, n, "%s ago", a);
-}
-
-static const char *yes_no(int8_t v, const char *yes, const char *no) {
-  return v < 0 ? "--" : (v ? yes : no);
-}
-
-static const char *proxy_answer(int raw) {
-  switch (raw) {
-    case LINK_OK:            return "reading";
-    case LINK_NO_SENSOR:     return "no sensor value";
-    case LINK_PROXY_NO_DATA: return "no data";
-    case LINK_PROXY_LOGIN:   return "login needed";
-    case LINK_NO_PROXY:      return "no answer";
-    default:                 return "--";
-  }
-}
-
-void draw_comms_screen(LovyanGFX &g, const State &s) {
-  g.fillScreen(COLOR_WHITE);
-  int y = draw_screen_header(g, "COMMUNICATION");
-
-  char upload[24], fetched[40], timing[24], clockfix[16], sensor[24];
-  ago_or_dash(s.lastUpdate, upload, sizeof(upload));
-  ago_or_dash(s.lastFetchOk, fetched, sizeof(fetched));
-  if (s.failStreak && s.lastFetchOk) {
-    size_t l = strlen(fetched);
-    snprintf(fetched + l, sizeof(fetched) - l, ", %u failed", (unsigned)s.failStreak);
-  }
-  if (!s.wifiMs)              snprintf(timing, sizeof(timing), "no WiFi");
-  else if (s.rawLink == LINK_NO_PROXY)
-                              snprintf(timing, sizeof(timing), "- / %.1f s", s.wifiMs / 1000.0f);
-  else                        snprintf(timing, sizeof(timing), "%u ms / %.1f s",
-                                       (unsigned)s.fetchMs, s.wifiMs / 1000.0f);
-  if (!s.lastAttempt)         snprintf(timing, sizeof(timing), "--");
-  snprintf(clockfix, sizeof(clockfix), "%+ld s", (long)s.clockFix);
-  // The proxy passes sensorState through as Medtronic spells it; the common
-  // healthy value gets a word, the rest stay recognisable for a search.
-  if (!s.sensorState[0])                              snprintf(sensor, sizeof(sensor), "--");
-  else if (!strcmp(s.sensorState, "NO_ERROR_MESSAGE")) snprintf(sensor, sizeof(sensor), "ok");
-  else                                                snprintf(sensor, sizeof(sensor), "%s", s.sensorState);
-
-  struct { const char *label; const char *value; } rows[] = {
-    {"Pump near phone", yes_no(s.pumpInRange, "yes", "no")},
-    {"Phone online",    yes_no(s.phoneInRange, "yes", "no")},
-    {"Last upload",     upload},
-    {"Sensor",          sensor},
-    {"Proxy answer",    proxy_answer(s.rawLink)},
-    {"Good fetch",      fetched},
-    {"Fetch / WiFi",    timing},
-    {"Proxy IP",        s.proxyIp[0] ? s.proxyIp : "--"},
-    {"Clock fix",       s.lastAttempt ? clockfix : "--"},
-  };
-  int lh = font_height(g, FONT_LABEL);
-  for (auto &r : rows) {
-    draw_kv_row(g, y, r.label, FONT_LABEL, r.value, FONT_LABEL, COLOR_BLACK);
-    y += lh + 5;
-  }
-}
-
 void draw_current_screen(LovyanGFX &g, int screen, const State &s,
                          const Config &c, time_t session_start) {
   switch (screen) {
     case SCREEN_STATS: draw_stats_screen(g, s);                    break;
     case SCREEN_PUMP:  draw_pump_screen(g, s, c);                  break;
     case SCREEN_INFO:  draw_info_screen(g, s, c, session_start);   break;
-    case SCREEN_COMMS: draw_comms_screen(g, s);                    break;
     default:           draw_main_screen(g, s, c);                  break;
   }
 }
