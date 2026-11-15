@@ -34,6 +34,12 @@ STAY_HOME="${STAY_HOME:-0}"
 TRAVEL_AP="${TRAVEL_AP:-1}"
 [[ "$STAY_HOME" == 1 ]] && TRAVEL_AP=0
 TRAVEL_PSK_FILE="/etc/carelink/travel-ap.psk"
+# When an update that needs one may reboot the Pi. By day on an appliance:
+# overnight is when the monitor matters most. The reference Pi that is also
+# the house DNS server reboots at night instead (REBOOT_TIME=02:00), when a
+# minute without DNS bothers nobody.
+REBOOT_TIME="${REBOOT_TIME:-14:00}"
+[[ "$REBOOT_TIME" =~ ^[0-2][0-9]:[0-5][0-9]$ ]] || { echo "REBOOT_TIME must be HH:MM, not '$REBOOT_TIME'"; exit 1; }
 
 say() { printf '\n== %s\n' "$*"; }
 
@@ -143,17 +149,17 @@ sudo tee /etc/apt/apt.conf.d/20auto-upgrades >/dev/null <<'EOF'
 APT::Periodic::Update-Package-Lists "1";
 APT::Periodic::Unattended-Upgrade "1";
 EOF
-sudo tee /etc/apt/apt.conf.d/52carelink-unattended >/dev/null <<'EOF'
+sudo tee /etc/apt/apt.conf.d/52carelink-unattended >/dev/null <<EOF
 // CareLink appliance: security updates daily, unattended.
 // Debian-Security comes from 50unattended-upgrades; the Raspberry Pi archive
 // (kernel, firmware, rpi-connect) is not in Debian's defaults, so add it.
 Unattended-Upgrade::Origins-Pattern {
-        "origin=Raspberry Pi Foundation,codename=${distro_codename},label=Raspberry Pi Foundation";
+        "origin=Raspberry Pi Foundation,codename=\${distro_codename},label=Raspberry Pi Foundation";
 };
-// Reboot only when an update needs it, and then by day: overnight is when
-// the monitor matters most.
+// Reboot only when an update needs it, and then at REBOOT_TIME from
+// provision.sh (by day by default: overnight is when the monitor matters most).
 Unattended-Upgrade::Automatic-Reboot "true";
-Unattended-Upgrade::Automatic-Reboot-Time "14:00";
+Unattended-Upgrade::Automatic-Reboot-Time "${REBOOT_TIME}";
 EOF
 
 say "persistent journal"

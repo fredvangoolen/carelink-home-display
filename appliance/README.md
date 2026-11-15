@@ -189,7 +189,11 @@ leaves the whole thing out. `STAY_HOME=1 ./provision.sh` goes further, for a Pi
 that never leaves the house (say, one that is also the house DNS server): it
 installs the same proxy and renewal path but none of the three radio features
 - no setup hotspot, no WiFi watchdog, no display fallback hotspot. It skips
-them; it does not remove ones an earlier run installed.
+them; it does not remove ones an earlier run installed. Such a Pi usually
+also wants `REBOOT_TIME=02:00`: security updates that need a reboot happen
+at 14:00 by default, because overnight is when the monitor matters most,
+but on the house DNS server a reboot by day takes the household's internet
+with it. Give it on every run, or the next run sets 14:00 again.
 `journalctl -u carelink-travel-ap` shows every change it made.
 
 ## Renewing a token

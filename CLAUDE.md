@@ -95,7 +95,9 @@ enables the display chain at boot — both deliberate, see
 
 Switches: `TRAVEL_AP=0` leaves out the display's fallback hotspot;
 `STAY_HOME=1` leaves out all three radio features (setup hotspot, WiFi
-watchdog, fallback hotspot) for a Pi that never moves.
+watchdog, fallback hotspot) for a Pi that never moves; `REBOOT_TIME=HH:MM`
+moves the unattended-upgrade reboot from 14:00 (02:00 on the reference Pi,
+which is also the house DNS server).
 
 ## Never commit
 
