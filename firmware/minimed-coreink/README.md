@@ -36,7 +36,7 @@ depends on every one of them.
 | 3 | deep sleep, RTC state, toggle | done |
 | 4 | remaining screens, fault tables, alarms | done |
 | 5 | AP config portal | done |
-| 6 | soak and cutover | done — see below |
+| 6 | soak and cutover | done |
 
 All four screens confirmed against live pump data on the panel. Two bugs
 found that way and only that way, both invisible from the serial console:
@@ -45,38 +45,6 @@ the secondary screens from nothing), and the IP was read after the radio had
 been powered down. See `1429da6` - the lesson is that the scheduled-poll path
 and the toggle path draw from different sources, and testing the first says
 nothing about the second.
-
-## Phase 6: the soak said the port was not worth it for power
-
-Run for several days beside the MicroPython board, the two drew **almost
-identical** power. The port is a codebase improvement, not a battery one, and
-the honest reason it was kept is the code rather than the runtime.
-
-Why: the workload was never compute-bound. Of a cycle, the panel takes ~2.3 s
-of e-paper waveform, WiFi association 1.2 s, and the application logic about
-0.1 s — where the C++ build is in fact *slower* than MicroPython (102 ms
-against 79 ms), the round trip dominating either way. Compiling away the
-interpreter optimised the one part that was already small, and most of that
-saving went straight back into the per-wake panel clear this port turned out
-to need.
-
-The rest dilutes it. At a ~1.5 % duty cycle, the two builds differ by 0.3 %
-of `(I_awake - I_sleep)`; if this board's deep-sleep draw is a milliamp or
-more, that difference disappears into the noise over a few days, which is
-what happened.
-
-**Two things were never measured and would settle it**, if anyone cares to:
-
-- current, rather than time — everything here is timing, never milliamps
-- battery life at a 600 s poll instead of 300 s. If it roughly doubles, awake
-  time dominates and is worth attacking; if it barely moves, deep sleep
-  dominates and no amount of awake-time work will help
-
-And if awake time does dominate, the lever is not the language: it is clearing
-the panel every *fourth* wake instead of every wake (~4.28 s → ~2.9 s), a
-bigger win than the whole port delivered. M5's own factory firmware clears
-once per ten updates, so once per wake is likely conservative — though its
-device never sleeps, so its panel controller keeps state ours loses.
 
 ## Build and flash
 
@@ -208,8 +176,7 @@ is used as-is.
 
 Normally you never touch this: an unconfigured device starts an access
 point, `M5INK_MINIMED_MON`, and serves a setup form at
-`http://192.168.4.1` — the same fields and field names as the MicroPython
-build, so the two are interchangeable to anyone who has set one up before.
+`http://192.168.4.1`.
 
 The access point's password is **random**, 12 characters, new each time the
 portal starts, and shown on the panel with a WiFi QR code: scan it with a
@@ -261,9 +228,8 @@ boot of a configured board and stores nothing, so the whole flow can be tried
 without wiping a working device. It returns to the portal after every save,
 by design — reflash the normal build afterwards.
 
-Another improvement over that build: `WebServer::arg()` URL-decodes, where the
-Python splits the raw query string, so a WiFi password containing `%`, `&` or
-a space works here and silently does not there.
+A WiFi password containing `%`, `&` or a space works: `WebServer::arg()`
+URL-decodes the form.
 
 Once configured, the portal never comes back by itself — a total WiFi or
 proxy failure is not a reason to drop into setup. To start over, for a typo
@@ -302,26 +268,12 @@ esptool --chip esp32 --port /dev/ttyACM0 write-flash 0x9000 /tmp/nvs.bin
 `patient` is optional — the proxy reports `firstName`, so a device never told
 a name still shows the right one; the setting only overrides it.
 
-## Font metrics differ from the MicroPython build
+## The large reading uses DejaVu72
 
-M5GFX reports different metrics to C++ than through its MicroPython binding,
-so **layout constants cannot be copied between the two builds**:
-
-| font | Python's comments | C++ measured |
-|---|---|---|
-| DejaVu72 | 50 px | 75 px |
-| DejaVu40 x2 | 86 px tall, 140 wide | 84 tall, 156 wide |
-| DejaVu24 | 26 px | 25 px |
-| DejaVu18 | 20 px | 18 px |
-| DejaVu12 | 16 px | 13 px |
-
-The Python file chose DejaVu40-at-2x for the large reading precisely because
-its DejaVu72 measured only 50 px. Here DejaVu72 is taller *and* 15 px
-narrower, so the port uses it instead: with DejaVu40-at-2x the trend arrows
-shrink to 10 px against the 17 px DejaVu72 leaves them, and the arrows are
-what turn a number into a direction. Both builds compute their geometry from
-`fontHeight()`/`textWidth()` at runtime, so each is internally consistent -
-they simply do not produce identical panels.
+The reading is drawn in DejaVu72 (75 px tall here), not DejaVu40 at double
+size: it is narrower, and leaves the trend arrows 17 px instead of 10 px, and
+the arrows are what turn a number into a direction. All geometry is computed
+from `fontHeight()`/`textWidth()` at runtime, never from fixed pixel values.
 
 ## Fault tables were generated, not transcribed
 
@@ -339,39 +291,40 @@ agree.
 ## The panel needs a clear on every wake
 
 `M5.begin()`'s `clear_display` gates exactly one thing — `Display.clear()` —
-and the port needs it **true**, where `main_m5coreink.py` sets it false.
-
-Under UIFlow the firmware ran its own `M5.begin()` with default config on
-every boot, so the panel was cleared each wake regardless; the app's `false`
-only suppressed a second, redundant clear. Here the sketch's `M5.begin()` is
-the only one, so `false` means the panel is never cleared and residue
-accumulates until a changed screen cannot be read.
+and it must be **true**. The sketch's `M5.begin()` is the only one, so
+`false` means the panel is never cleared and residue accumulates until a
+changed screen cannot be read.
 
 Waveform choice is not a substitute. Both the quality two-pass on every draw
 and a black/white conditioning flush on cold boot were tried on hardware and
 neither helped; only the per-wake clear did. It costs ~1.9 s (2.35 s -> 4.28 s
-per cycle), which is worth paying and still under MicroPython's 5.26 s.
-
-This is the sharpest example so far of why the two builds cannot share
-reasoning: `clear_display: False` and `FULL_REFRESH_EVERY = 12` are both
-correct in the Python file and both wrong here, for a reason that lives in
-the firmware rather than in either file.
+per cycle), which is worth paying.
 
 ## Measured on this board
 
-Against the MicroPython build running the same cycle on the same hardware:
+| | |
+|---|---|
+| WiFi association | 1178 ms |
+| fetch + parse | 102 ms |
+| awake per cycle | **4284 ms** |
+| awake per day | **~20 min** |
+| free RAM | 275 KB |
+| image size | ~1.3 MB |
 
-| | MicroPython | Arduino |
-|---|---|---|
-| WiFi association | 2081 ms | 1178 ms |
-| fetch + parse | 79 ms | 102 ms |
-| awake per cycle | 5260 ms | **4284 ms** |
-| awake per day | ~25 min | **~20 min** |
-| free RAM | ~55 KB largest block | 275 KB |
-| image size | 3.4 MB | 1.16 MB |
+Of a cycle, the panel takes ~2.3 s of e-paper waveform, WiFi association 1.2 s, and the application logic about
+0.1 s. The cycle was 2.0–2.3 s before the per-wake clear became necessary.
 
-The cycle was 2.0–2.3 s before the per-wake panel clear became necessary; see
-below. Measured power over several days: **near-identical** to MicroPython.
+**Two things were never measured** and would show where battery life goes:
+
+- current, rather than time — everything here is timing, never milliamps
+- battery life at a 600 s poll instead of 300 s. If it roughly doubles, awake
+  time dominates and is worth attacking; if it barely moves, deep sleep
+  dominates and no amount of awake-time work will help
+
+If awake time does dominate, the lever is clearing the panel every *fourth*
+wake instead of every wake (~4.28 s → ~2.9 s). M5's own factory firmware
+clears once per ten updates, so once per wake is likely conservative — though
+its device never sleeps, so its panel controller keeps state ours loses.
 
 ### Power hold, from reset
 
@@ -381,17 +334,15 @@ or switches the board off for good.
 
 | | assert |
 |---|---|
-| MicroPython (patched firmware) | 100 ms |
-| Arduino, software reset — the crash case | 147 ms |
-| Arduino, cold boot | 238 ms |
+| software reset — the crash case | 147 ms |
+| cold boot | 238 ms |
 
-Arduino is slower because the stock bootloader validates the image, which our
-patched UIFlow firmware skips. **Verified on battery** with a restart loop
+Most of it is the stock bootloader validating the image. **Verified on battery** with a restart loop
 counting in `RTC_NOINIT_ATTR` memory: the count keeps climbing, so 147 ms is
 inside the coast and the self-recovery property survives the port.
 
 Note `RTC_DATA_ATTR` is **not** suitable for anything that must outlive a
 crash — it lives in `.rtc.bss`, which ESP-IDF zeroes on every boot that is
 not a deep-sleep wake. That is the right behaviour for the state snapshot
-(which must be discarded on a cold boot, as MicroPython's RTC memory is) and
+(which must be discarded on a cold boot) and
 the wrong one for a reboot counter.
