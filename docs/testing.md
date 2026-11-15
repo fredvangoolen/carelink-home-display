@@ -84,8 +84,12 @@ for s in appliance/*.sh appliance/*/*.sh; do bash -n "$s"; done
 - **The automatic setup hotspot, rehearsed at home**: a Pi booted with no
   known network raising the hotspot by itself. Only the forced path has been
   exercised.
-- **`STAY_HOME=1 ./provision.sh`**: added when the two repositories were
-  merged; syntax-checked only, not yet run on a Pi.
+- **`STAY_HOME=1 ./provision.sh`**: first run on a Pi on 2026-11-15, on the
+  reference Pi that is also the house DNS server, with `REBOOT_TIME=02:00`.
+  It installed no radio features, kept the 02:00 reboot, and left DNS
+  working; afterwards every installed file matched the repository, or
+  differed from a travelling Pi's only by user name and reboot time. Not yet
+  tried: a first install with `STAY_HOME=1` on a fresh Pi.
 - **The browser flasher page** (`docs/flasher/`): first release `v0.1-arduino`
   published on 2026-11-15 and used the same day to update a display in use,
   *without* erasing: flashed without a problem, settings kept. Not yet tried:
