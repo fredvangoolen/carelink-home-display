@@ -39,11 +39,42 @@ of `appliance/README.md` gives.
 The proxy and the scripts can at least be syntax-checked off the Pi:
 
 ```bash
-python -m py_compile proxy/*.py appliance/renew_login.py appliance/setup-ap/setup_ap_server.py
+python -m py_compile proxy/*.py appliance/renew_login.py appliance/setup-ap/setup_ap_server.py desktop/*.py
+python3 desktop/gen_faults.py --check      # fault tables in step with faults.cpp
+node --check proxy/display/display.js     # if node is at hand
 for s in appliance/*.sh appliance/*/*.sh; do bash -n "$s"; done
 ```
 
+## The desktop monitor and the display page
+
+Both read `nohistory` by the firmware's rules, so test them on the same
+cases: a saved answer with its fields changed (the reading's
+`lastConduitUpdateServerDateTime`, `lastSG.sg`, `lastAlarm`), shown with
+`python3 desktop/minimed_desktop.py --check --file case.json`. The page can
+be checked the same way through a stub around the real handler that serves
+the edited answer, opened in a browser or with `google-chrome --headless
+--dump-dom`. Done on 2026-11-16 for: a current reading, an empty answer
+(with and without the proxy asking for a login), a reading 65 minutes old,
+no sensor value, a low alarm two minutes old, the same with the glucose
+recovered (fault 802), an alarm 16 minutes old, an unparseable alarm time,
+an unknown fault id, a pump banner, the pump out of range, and every field
+null. Desktop and page gave the same answer each time. HTML in a status
+field showed as text on the page, under its CSP, and ran nothing.
+
+Seen on Linux only: the window in three states (screenshots). The sound
+files are generated and valid, and `paplay` is found, but nobody has
+listened to them yet: use *Monitor → Test sound*.
+
 ## Not tested yet
+
+- **The desktop monitor's sound** on any system, and the monitor **on Windows
+  and macOS**: install from python.org,
+  the `.pyw` double-click, the sound through `winsound` and `afplay`, and the
+  settings file. Also a whole night with the computer awake, to see that the
+  window keeps updating.
+- **The display page on a real Pi**: installed by `provision.sh` into
+  `/usr/local/carelink/display/`, reached at `http://<pi>:8081/display`, and
+  the sound after a click, in a phone browser as well.
 
 - **Quicker travel hand-over**: partly tested on 2026-11-15, on a trip, with
   the Pi on a phone's WiFi. The Pi, rebooted: its WiFi up at 17 s, the

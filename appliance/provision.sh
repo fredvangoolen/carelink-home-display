@@ -99,6 +99,10 @@ install -m 0755 "$SRC/appliance/renew.sh"                "$INSTALL_DIR/"
 sudo install -d -m 0755 "$PROXY_DIR"
 sudo install -m 0644 "$PROXY_SRC/carelink_client2.py"       "$PROXY_DIR/"
 sudo install -m 0644 "$PROXY_SRC/carelink_client2_proxy.py" "$PROXY_DIR/"
+# The live display page (/display). Next to the proxy, which finds it there.
+sudo install -d -m 0755 "$PROXY_DIR/display"
+sudo install -m 0644 "$PROXY_SRC"/display/*.html "$PROXY_SRC"/display/*.js \
+                     "$PROXY_SRC"/display/*.css "$PROXY_DIR/display/"
 sudo install -d -m 0700 "$TOKEN_DIR"
 # Where the VNC password goes. x11vnc -storepasswd will not create the
 # directory, and fails with "No such file or directory" on a fresh install.

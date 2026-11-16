@@ -237,6 +237,23 @@ The set can travel along: the box and the display find each other in a
 holiday home too, even on WiFi that would normally keep them apart. Ask your
 helper before you go; the details are in [travel.md](travel.md).
 
+### On your computer as well
+
+The same *Glucose* screen can also run in a window on a computer in the
+house: as a backup when the display is away, or on the patient's own desk.
+Your helper installs it (instructions in
+[desktop/README.md](../desktop/README.md)); it needs Python, which is free,
+and the box's address. *Monitor → Test sound* lets you hear the alarm tone.
+It shows the same messages as the table above, but only while the computer
+is on and awake: a sleeping computer shows nothing.
+
+For a quick look from any computer or phone at home there is also a page in
+the browser: `http://` followed by the box's name and `:8081/display`, for
+example `http://carelink-01:8081/display`. It is meant for a glance and for
+your helper's troubleshooting, not for keeping open as a monitor: a browser
+plays no sound until you click *Enable alarm sound*, and stops when the
+computer sleeps or the tab is closed.
+
 ---
 
 *This display repeats information from an insulin pump. It is not a medical

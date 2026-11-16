@@ -7,10 +7,15 @@ carries the full text of its own.
 |---|---|---|
 | `proxy/`, `appliance/` | GNU Affero General Public License v3.0 | [`proxy/LICENSE`](proxy/LICENSE), [`appliance/LICENSE`](appliance/LICENSE) |
 | `firmware/` | GNU General Public License v3.0 | [`firmware/LICENSE`](firmware/LICENSE) |
+| `desktop/` | GNU General Public License v3.0 | [`desktop/LICENSE`](desktop/LICENSE) |
 | `docs/`, the files in the root | describe both; treat as AGPL-3.0 | |
 
-The display and the proxy are separate programs that talk over HTTP; neither
-contains code of the other.
+The display, the desktop monitor and the proxy are separate programs that
+talk over HTTP; none contains code of another. The one shared piece is data:
+the pump's fault texts, kept in `firmware/minimed-coreink/faults.cpp` and
+generated from there into `desktop/faults.py` and `proxy/display/faults.js`
+(GPL-3.0 data inside the AGPL-3.0 proxy, which section 13 of both licences
+allows).
 
 ## Where it comes from
 
@@ -33,6 +38,9 @@ left out. That project in turn thanks:
 redesign of Ondrej Wisniewski's **M5 Minimed Monitor**. The fault-code tables
 (reverse-engineered from real pump alarm data) and the overall
 poll / configure / setup-hotspot design come from there.
+
+**`desktop/`** is a rewrite of `minimed-mon-pc.py`, the Tkinter version of
+the same M5 Minimed Monitor, using the firmware's rules for what to show.
 
 This repository starts with a fresh history. The earlier history of both
 halves, including the upstream commits, is not in it; the credits above stand

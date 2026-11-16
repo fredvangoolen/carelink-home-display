@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CareLink display</title>
+<link rel="stylesheet" href="/display/display.css">
+<script src="/display/faults.js" defer></script>
+<script src="/display/display.js" defer></script>
+</head>
+<body>
+<main>
+  <section id="reading">
+    <span id="sg">---</span><span id="trend"></span>
+  </section>
+  <div class="unit-row"><span>mg/dL</span><span id="prev"></span></div>
+  <div id="banner" hidden></div>
+
+  <section class="kv">
+    <div><span class="k">Act. insulin</span><span class="v" id="insulin">--</span></div>
+    <div><span class="k">Pump battery</span><span class="v" id="battery">--</span></div>
+    <div><span class="k">Reservoir</span><span class="v" id="reservoir">--</span></div>
+    <div><span class="k">Sensor</span><span class="v" id="sensor">--</span></div>
+  </section>
+
+  <div id="stats"></div>
+  <div class="updated-row"><span id="updated">Updated: no data</span><span id="clock">--:--</span></div>
+
+  <div class="sound-row">
+    <button id="sound" type="button">Enable alarm sound</button>
+    <span class="note">A quick look and a debugging aid. Not a monitor: a browser
+    tab stops when the computer sleeps or the tab is closed, and plays no sound
+    until you click.</span>
+  </div>
+
+  <details id="debug">
+    <summary>Debug</summary>
+    <table>
+      <tr><th>Last poll</th><td id="d-poll">-</td></tr>
+      <tr><th>Answer</th><td id="d-answer">-</td></tr>
+      <tr><th>Proxy clock</th><td id="d-skew">-</td></tr>
+      <tr><th>Pump &rarr; phone</th><td id="d-pump">-</td></tr>
+      <tr><th>Phone &rarr; CareLink</th><td id="d-phone">-</td></tr>
+      <tr><th>Reading time</th><td id="d-reading">-</td></tr>
+      <tr><th>Last alarm</th><td id="d-alarm">-</td></tr>
+      <tr><th>Link state</th><td id="d-link">-</td></tr>
+    </table>
+    <p><button id="refresh" type="button">Refresh now</button> <a href="/carelink/nohistory">raw JSON</a> &middot; <a href="/">proxy status</a></p>
+    <pre id="raw"></pre>
+  </details>
+</main>
+</body>
+</html>

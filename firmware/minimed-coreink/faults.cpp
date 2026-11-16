@@ -12,7 +12,8 @@
 //
 // Originally generated from the MicroPython build's tables (main_m5coreink.py,
 // no longer in this repository), so this file is now the source: add entries
-// here, by hand, and check each one twice.
+// here, by hand, and check each one twice. Then run desktop/gen_faults.py,
+// which copies the tables to the desktop monitor and the proxy's web page.
 
 #include "faults.h"
 #include <string.h>

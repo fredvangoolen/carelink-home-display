@@ -60,6 +60,9 @@ proxy settings (choose *do not erase*). The page always carries the
   browser with no build environment.
 - [docs/travel.md](docs/travel.md) — taking the set somewhere else: plan A,
   plan B and the hotspots, across both halves.
+- [desktop/README.md](desktop/README.md) — the display's main screen in a
+  window on Windows, macOS or Linux, for a caregiver's computer and for
+  debugging; and the proxy's live page at `http://<pi>:8081/display`.
 - [docs/lessons.md](docs/lessons.md) — things that cost a day to find out.
 - [docs/testing.md](docs/testing.md) — test builds, what is verified on
   hardware, and what is still untested.

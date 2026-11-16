@@ -252,6 +252,25 @@ vakantiewoning, zelfs op een wifi die toestellen normaal van elkaar
 afschermt. Vraag het je helper voor je vertrekt; de details staan (in het
 Engels) in [travel.md](travel.md).
 
+### Ook op je computer
+
+Hetzelfde scherm *Glucose* kan ook in een venster op een computer in huis
+draaien: als reserve wanneer het scherm weg is, of op het bureau van de
+patiënt zelf. Je helper installeert het (instructies, in het Engels, in
+[desktop/README.md](../desktop/README.md)); het heeft Python nodig, dat
+gratis is, en het adres van het kastje. Met *Monitor → Test sound* hoor je
+de alarmtoon. Het toont dezelfde meldingen als de tabel hierboven, maar
+alleen zolang de computer aan staat en niet slaapt: een slapende computer
+toont niets.
+
+Om snel even te kijken vanaf een computer of telefoon thuis is er ook een
+pagina in de browser: `http://`, de naam van het kastje en `:8081/display`,
+bijvoorbeeld `http://carelink-01:8081/display`. Die is bedoeld om even te
+kijken en voor je helper bij het zoeken naar een fout, niet om open te
+laten staan als bewaking: een browser speelt geen geluid tot je op *Enable
+alarm sound* klikt, en stopt wanneer de computer slaapt of het tabblad
+dicht gaat.
+
 ---
 
 *Dit scherm herhaalt informatie van een insulinepomp. Het is geen medisch

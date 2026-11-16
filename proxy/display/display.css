@@ -1,0 +1,47 @@
+:root {
+  --bg: #101418; --fg: #ffffff; --dim: #9aa4ad; --panel: #1b2229;
+  --low: #d32f2f; --high: #f9a825; --high-fg: #101418;
+  --alarm: #d32f2f; --link: #ef6c00; --stale: #ef6c00; --pump: #37474f;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--fg); }
+body { font-family: system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+main { max-width: 640px; margin: 0 auto; padding: 16px; }
+
+#reading { display: flex; align-items: center; gap: 16px; padding: 4px 12px; border-radius: 6px; }
+#reading.low  { background: var(--low); }
+#reading.high { background: var(--high); color: var(--high-fg); }
+#sg { font-size: clamp(64px, 22vw, 120px); font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+#trend { font-size: clamp(32px, 11vw, 64px); font-weight: 700; }
+
+.unit-row, .updated-row { display: flex; justify-content: space-between; }
+.unit-row { color: var(--dim); padding: 2px 12px 0; }
+
+#banner { margin-top: 12px; padding: 8px 12px; border-radius: 6px; text-align: center;
+          font-weight: 700; font-size: 1.15rem; background: var(--pump); }
+#banner.alarm { background: var(--alarm); }
+#banner.link, #banner.stale { background: var(--link); }
+
+.kv { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 16px; }
+.kv div { display: flex; flex-direction: column; }
+.k { color: var(--dim); font-size: .8rem; }
+.v { font-size: 1.1rem; }
+@media (max-width: 420px) { .kv { grid-template-columns: repeat(2, 1fr); } }
+
+#stats { color: var(--dim); font-size: .85rem; margin-top: 16px; min-height: 1em; }
+.updated-row { margin-top: 4px; font-size: 1.05rem; }
+
+.sound-row { display: flex; gap: 12px; align-items: center; margin-top: 20px; }
+.note { color: var(--dim); font-size: .8rem; }
+button { flex: none; white-space: nowrap; background: var(--panel); color: var(--fg); border: 1px solid var(--dim);
+         border-radius: 4px; padding: 6px 10px; font: inherit; cursor: pointer; }
+button.on { border-color: #43a047; color: #a5d6a7; }
+
+#debug { margin-top: 20px; color: var(--dim); }
+#debug summary { cursor: pointer; }
+#debug table { border-collapse: collapse; margin-top: 8px; font-size: .85rem; }
+#debug th { text-align: left; font-weight: normal; padding: 2px 16px 2px 0; }
+#debug td { color: var(--fg); }
+#debug a { color: #90caf9; }
+#raw { background: var(--panel); color: var(--fg); padding: 8px; font-size: .75rem;
+       max-height: 50vh; overflow: auto; white-space: pre-wrap; word-break: break-all; }

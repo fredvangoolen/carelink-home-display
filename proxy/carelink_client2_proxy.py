@@ -54,6 +54,7 @@ import carelink_client2
 import argparse
 import time
 import json
+import os
 import sys
 import signal
 import threading 
@@ -92,6 +93,32 @@ OPT_FALLBACK  = "fallback"
 # password is picked up without a restart; absent file = no hotspot = 404.
 FALLBACK_SSID    = "carelink-travel"
 FALLBACK_PSKFILE = "/etc/carelink/travel-ap.psk"
+
+# The live display page, for debugging and a quick look from any browser on
+# the network; not a monitor (it cannot sound reliably and dies with its tab).
+# A fixed table, never a path joined from the request: nothing else in that
+# directory, or outside it, can be served by this. Read on every request, so
+# an upgraded page needs no restart.
+DISPLAY_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "display")
+DISPLAY_FILES = {
+   "display":            ("index.html",  "text/html; charset=utf-8"),
+   "display/display.js": ("display.js",  "text/javascript; charset=utf-8"),
+   "display/faults.js":  ("faults.js",   "text/javascript; charset=utf-8"),
+   "display/display.css": ("display.css", "text/css; charset=utf-8"),
+}
+# The page shows text that comes from CareLink (fault and status strings).
+# Script running on THIS origin would pass the Origin check that guards the
+# token POST, so: no inline script, no other origin, nothing framed, and the
+# page itself inserts all data as text, never as HTML.
+DISPLAY_HEADERS = {
+   "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self'; "
+                              "connect-src 'self'; img-src 'self'; base-uri 'none'; "
+                              "form-action 'none'; frame-ancestors 'none'",
+   "X-Frame-Options": "DENY",
+   "X-Content-Type-Options": "nosniff",
+   "Referrer-Policy": "no-referrer",
+   "Cache-Control": "no-store",
+}
 
 UPDATE_INTERVAL = 300
 RETRY_INTERVAL  = 120
@@ -220,7 +247,7 @@ def webgui(status,action=None,error=""):
    tail =  '<span style="font-size: 16px; color: red; font-family: Helvetica,Arial,sans-serif;"></span><br> \n \
             <table style="text-align: left; width: 460px; background-color: #2196F3;" border="0" cellpadding="2" cellspacing="2"><tbody> \n \
             <tr><td style="vertical-align: top; text-align: center;"> \n \
-            <span style="font-family: Helvetica,Arial,sans-serif; color: white;"><a style="color: white;" href=https://github.com/fredvangoolen/carelink-home-display>carelink-home-display</a> proxy | version %s | based on <a style="color: white;" href=https://github.com/ondrej1024/carelink-python-client>carelink_client2_proxy</a></span></td></tr> \n \
+            <span style="font-family: Helvetica,Arial,sans-serif; color: white;"><a style="color: white;" href=/display>live display</a> | <a style="color: white;" href=https://github.com/fredvangoolen/carelink-home-display>carelink-home-display</a> proxy | version %s | based on <a style="color: white;" href=https://github.com/ondrej1024/carelink-python-client>carelink_client2_proxy</a></span></td></tr> \n \
             </tbody></table></body></html>' % VERSION
 
    # Not called "html": that name is the module escaping g_detail above.
@@ -257,7 +284,7 @@ class MyServer(BaseHTTPRequestHandler):
       #Disable logging
       pass
 
-   def _reply(self, status_code, content_type, response):
+   def _reply(self, status_code, content_type, response, headers=None):
       # Deliberately NO Access-Control-Allow-Origin. It used to be "*", which
       # let any web page open in any browser on the same network read the
       # full patient record cross-origin - no compromise needed, just a bad
@@ -266,6 +293,8 @@ class MyServer(BaseHTTPRequestHandler):
       # them at all.
       self.send_response(status_code)
       self.send_header("Content-type", content_type)
+      for name, value in (headers or {}).items():
+         self.send_header(name, value)
       self.end_headers()
       try:
          self.wfile.write(bytes(response, "utf-8"))
@@ -316,6 +345,18 @@ class MyServer(BaseHTTPRequestHandler):
             response = ""
             status_code = HTTPStatus.NOT_FOUND
             content_type = "text/html"
+      elif self.path.strip("/") in DISPLAY_FILES:
+         name, content_type = DISPLAY_FILES[self.path.strip("/")]
+         try:
+            with open(os.path.join(DISPLAY_DIR, name), encoding="utf-8") as f:
+               response = f.read()
+            status_code = HTTPStatus.OK
+         except OSError as e:
+            log.warning("display page: %s" % e)
+            response = ""
+            status_code = HTTPStatus.NOT_FOUND
+         self._reply(status_code, content_type, response, DISPLAY_HEADERS)
+         return
       elif self.path == "/":
          # Show web GUI
          if g_status == STATUS_NEED_TKN:

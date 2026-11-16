@@ -5,12 +5,13 @@ Guidance for Claude Code when working in this repository.
 ## What this is
 
 A remote display for a Medtronic MiniMed 770G/780G insulin pump, for the
-people who care for a Type-1 diabetes patient. Two programs, one project:
+people who care for a Type-1 diabetes patient. Three programs, one project:
 
 | Directory | What | Runs on | Licence |
 |---|---|---|---|
 | `firmware/minimed-coreink/` | the display: wakes every ~5 minutes, polls the proxy, redraws, deep-sleeps | M5Stack Core Ink (ESP32-PICO-D4, 1.54" e-paper, buzzer) | GPL-3.0 |
 | `firmware/tools/nvs-slot-edit/` | one-shot sketch to change a WiFi slot in NVS | same board | GPL-3.0 |
+| `desktop/` | the display's main screen in a window, for a caregiver's computer and for debugging; stdlib Python + Tk | Windows, macOS, Linux | GPL-3.0 |
 | `proxy/` | holds the CareLink login, polls CareLink Cloud, re-serves the data on port 8081 | Raspberry Pi | AGPL-3.0 |
 | `appliance/` | `provision.sh` and friends: turns a stock Pi into the proxy, with browser token renewal and the travel hotspots | Raspberry Pi | AGPL-3.0 |
 | `docs/` | markdown only | | |
@@ -22,12 +23,19 @@ treat changes there as risky.
 ## The contract between the two halves
 
 The firmware and the proxy share no code, only two URLs. A change to either
-JSON shape is a breaking change for the other side — change both or neither:
+JSON shape is a breaking change for the other side — change both or neither.
+`desktop/` and the proxy's own `/display` page read `nohistory` too:
 
 - `GET /carelink/nohistory` — current pump data. If a field changes and the
   display breaks, look at the real response with `curl`; do not assume.
 - `GET /carelink/fallback` — `{"ssid": ..., "psk": ...}` for the Pi's travel
   hotspot, or 404. The display stores it in WiFi slot 2.
+
+Three frontends read `nohistory` — the firmware, `desktop/minimed_desktop.py`
+and `proxy/display/display.js` — and must apply the same rules: reading age
+from epochs, the stale banner at 20 minutes, the link states, the alarm
+window with `lastAlarm.dateTime` read as local time, low/high alarms
+dropped once the reading recovers. Change them in all three or none.
 
 Plan A / plan B (docs/travel.md) spans firmware slot 2, `appliance/travel-ap/`
 and that endpoint. Document it as one feature, in `docs/travel.md`.
@@ -52,7 +60,9 @@ arduino-cli compile --fqbn "$FQBN" --upload -p <port> firmware/minimed-coreink
 - A total WiFi failure skips the cycle. It must never fall into setup mode,
   which would strand a working monitor over a hiccup.
 - The fault tables (`faults.cpp`) are generated data. Extend them; do not
-  restructure them.
+  restructure them. After a change, run `python3 desktop/gen_faults.py`: it
+  copies them to `desktop/faults.py` and `proxy/display/faults.js`, which are
+  never edited by hand.
 - ArduinoJson rejects input that looser parsers accept (an empty string from a
   proxy with a dead token, for one). Check what the proxy really sends.
 - **Test builds** (`-DPLAN_A_RETRY_CYCLES=2`, `-DPORTAL_AP_TEST=1`,
@@ -69,7 +79,10 @@ arduino-cli compile --fqbn "$FQBN" --upload -p <port> firmware/minimed-coreink
 Everything builds on `proxy/carelink_client2.py` (`CareLinkClient`):
 
 - `carelink_client2_proxy.py` — the daemon. Serves `GET /` (status),
-  `/carelink`, `/carelink/nohistory`, `/carelink/fallback`. When the token is
+  `/carelink`, `/carelink/nohistory`, `/carelink/fallback`, and `/display`
+  (the live page in `proxy/display/`, from a fixed table of four files, with
+  a strict CSP: it shows CareLink text on the origin that accepts the token
+  POST, so data goes in as text only, never as HTML). When the token is
   invalid it serves a small web page to recover without SSH.
 - `carelink_client2_cli.py` — one-shot or repeating download to a file.
 - `carelink_carepartner_api_login.py` — browser login (Firefox, a human, a
