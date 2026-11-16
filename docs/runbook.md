@@ -349,7 +349,7 @@ The design rests on one boundary: **the household LAN is trusted, everything out
 | Port | What | Reachable | When |
 | --- | --- | --- | --- |
 | 22 | SSH | LAN only; remote access is Connect's outbound shell, not a port | always |
-| 8081 | proxy data + status page | whole LAN, **no authentication** | always |
+| 8081 | proxy data, status page, live display page (`/display`) | whole LAN, **no authentication** | always |
 | 5900 | x11vnc | loopback only (`-localhost`) | during a renewal |
 | 6080 | noVNC | whole LAN | during a renewal |
 
@@ -376,6 +376,8 @@ That is a deliberate trade. Full-disk encryption on a headless appliance means i
 
 The proxy also serves live patient data to anyone on the LAN who asks. In a family home that is roughly the intended audience. In a shared flat, a house with a guest network bridged to the main one, or a home with compromised IoT, it is not.
 
+**Open, parked: DNS rebinding.** Removing the CORS header stopped other web pages from reading the data, except by one route. A malicious site opened in any browser in the house can point its own name at the Pi's address; the browser then treats the Pi as part of that site, and the page reads `/carelink` and sends it out. No LAN access is needed beyond the victim's browser. The giveaway is the `Host` header (`Host: evil.example:8081`), which the proxy does not check today. The live page (`/display`) does not change this exposure either way. The fix and its rollout are in the loophole table below (row "Proxy does not check the `Host` header"). Parked on 2026-11-16 until after the desktop monitor and the live page are in use.
+
 ### When a set is decommissioned
 
 Have the patient remove the care partner from their account, and delete the care-partner account or change its password; either invalidates the tokens. Then wipe the SD card. Do not redeploy a card to another patient: shred it and image a fresh one. The cost of a card is not worth the chance of carrying one patient's token into another patient's house.
@@ -389,6 +391,7 @@ Found by reading the code and the provisioning rather than by assuming the desig
 | Proxy accepts a token by unauthenticated POST | High | `GUIURL = ""`, so `POST /` on 8081 is accepted **at any time**, not only when a token is needed, with no authentication. Anyone on the LAN can overwrite the credential — stopping the monitor, or pointing it at their own CareLink account so the display shows the wrong person's glucose | Fixed 2026-10-15: POST accepted only while a token is needed, cross-site `Origin` rejected, body capped at 16 KB. A per-device secret is still open |
 | `Access-Control-Allow-Origin: *` on every response | High | Any web page open on a device in the house can read the full patient record cross-origin. No compromise needed — just a bad page in a browser on the same LAN | Fixed 2026-10-15: header removed |
 | The handler has no access control at all | High | `do_GET` opens with a literal `# Security checks (if any) / # TODO`. Data, status and token replacement are all open to the LAN | Partly fixed by the two rows above; reading data stays open to the LAN by design. Binding to a known interface is still open |
+| Proxy does not check the `Host` header (DNS rebinding) | Medium | A malicious web page in any browser in the house can resolve its own name to the Pi and read the full patient record through that browser. The proxy answers whatever name the request carries | **Parked 2026-11-16.** Answer only when `Host` (port ignored) is an IP address (a rebinding attack always uses a name), the Pi's own name (`carelink-01`, `carelink-01.local`), `localhost`, or a name listed in `/etc/carelink/` by `provision.sh` (an `EXTRA_HOSTNAMES=` switch); 403 otherwise. **Risk: breaking a working display.** The firmware sends the address it was configured with as `Host` (`minimed-coreink.ino:327`), so a display set up with a DNS alias the Pi does not know (a Pi that is also the house DNS server may be known by a name of its own) would show *No link to proxy* after the upgrade. Roll out in three steps: log each new `Host` without refusing anything, for a week or so on the reference Pi and the delivered sets; add the names the logs show to `EXTRA_HOSTNAMES`; only then refuse. A display configured by IP address never breaks. No change for households |
 | Renewal screen is unencrypted on the LAN | Medium | VNC auth is 8-byte DES. Anyone on-path can capture the challenge and crack it offline, then join the shared session and drive the browser mid-login | TLS on websockify, or restrict 6080 by source address |
 | noVNC exposes a desktop, not a kiosk | Medium | Openbox plus an unrestricted Firefox: whoever reaches it during a renewal can browse anywhere **from inside the home network** | Kiosk-mode Firefox, and a window manager with no menu |
 | No firewall by default | Medium | 8081 and 6080 are open to every device on the LAN, including IoT and any guest network bridged to it | `ufw` allowing 8081 only from the display's address |
