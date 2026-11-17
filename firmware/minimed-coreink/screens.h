@@ -32,6 +32,15 @@ static const uint32_t COLOR_WHITE = 0xFFFFFFu;
 // Fixed local thresholds - the proxy carries no per-reading threshold to
 // read instead. Used to invert the glucose band, this panel having no red
 // ink to colour it with.
+//
+// 70 is deliberately ABOVE the hypo threshold (65, the usual pump low limit
+// in Belgium): the black band warns before a hypo, not at it. Do not
+// "correct" it to 65. It also decides when a low-glucose alarm is dropped
+// as recovered (resolve_alarm), so an alarm only clears above the warning
+// band; that hides a real alarm only on a pump whose low limit is set above
+// 70. CareLink's sgBelowLimit (50) is not this: it is the floor below which
+// the sensor value cannot be trusted. desktop/ and proxy/display/ use the
+// same two values.
 static const int HYPER_THRESHOLD_MGDL = 180;
 static const int HYPO_THRESHOLD_MGDL  = 70;
 
