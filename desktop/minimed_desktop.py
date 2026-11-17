@@ -505,7 +505,8 @@ class Window:
         self.alarm_key = None
         self.alarm_sounded = 0.0
 
-        self.root = root = tk.Tk()
+        # The class name ties the window to its menu launcher (install-linux.sh).
+        self.root = root = tk.Tk(className="carelink-monitor")
         root.title("CareLink monitor")
         root.configure(bg=COLORS["bg"])
         root.minsize(420, 300)

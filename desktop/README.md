@@ -21,7 +21,7 @@ Only Python 3.8 or newer, with Tk. Nothing to `pip install`.
 |---|---|---|
 | Windows | Python from [python.org](https://www.python.org/downloads/) (the default install includes Tk) | double-click `minimed_desktop.pyw` |
 | macOS | Python from [python.org](https://www.python.org/downloads/) (not the system or Homebrew Python, whose Tk is old or missing) | `python3 minimed_desktop.py` |
-| Linux | `sudo apt install python3-tk` | `python3 minimed_desktop.py` |
+| Linux | `sudo apt install python3-tk` | `./install-linux.sh` once, then *CareLink monitor* in the applications menu; or `python3 minimed_desktop.py` |
 
 Copy this whole `desktop/` directory: the program needs `faults.py` next to
 it. On first start it asks for the proxy's address (the name or IP address
@@ -32,9 +32,11 @@ to 8081). It remembers it, and the *Keep on top* setting, in:
 - macOS: `~/Library/Application Support/carelink-monitor/config.json`
 - Linux: `~/.config/carelink-monitor/config.json`
 
-To start it with the computer, put a shortcut to `minimed_desktop.pyw` in
-the Windows *Startup* folder (`Win+R`, `shell:startup`), or add
-`python3 /path/to/minimed_desktop.py` to your desktop's autostart.
+To start it with the computer: on Windows, put a shortcut to
+`minimed_desktop.pyw` in the *Startup* folder (`Win+R`, `shell:startup`); on
+Linux, run `./install-linux.sh --autostart`. `./install-linux.sh --remove`
+takes the menu entry and the autostart away again. The launcher holds the
+folder's full path, so after moving the folder, run the script again.
 
 Then set the computer not to sleep while plugged in. A computer that sleeps
 shows a frozen screen.
