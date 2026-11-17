@@ -61,20 +61,27 @@ an unknown fault id, a pump banner, the pump out of range, and every field
 null. Desktop and page gave the same answer each time. HTML in a status
 field showed as text on the page, under its CSP, and ran nothing.
 
-Seen on Linux only: the window in three states (screenshots). The sound
-files are generated and valid, and `paplay` is found, but nobody has
-listened to them yet: use *Monitor → Test sound*.
+On a real Pi, 2026-11-17: a staging set provisioned from the branch
+(`provision.sh`, normal switches), files checked by checksum, proxy
+restarted with its token kept. From the network: `/display` and its three
+files with the security headers, a 404 for every other path under it
+(sent unaltered with `curl --path-as-is`, `..` and `%2F` included),
+`nohistory` and `fallback` unchanged, the page rendering live data in
+Chrome, and `--check` reading it. The page, the desktop monitor from the
+command line and from its menu launcher (`install-linux.sh`, Linux Mint
+22.3, Cinnamon) were then used by hand and worked.
 
 ## Not tested yet
 
-- **The desktop monitor's sound** on any system, and the monitor **on Windows
-  and macOS**: install from python.org,
+- **The alarm sound heard by ear** (desktop *Monitor → Test sound*, and the
+  page after *Enable alarm sound*), and the monitor **on Windows and
+  macOS**: install from python.org,
   the `.pyw` double-click, the sound through `winsound` and `afplay`, and the
   settings file. Also a whole night with the computer awake, to see that the
   window keeps updating.
-- **The display page on a real Pi**: installed by `provision.sh` into
-  `/usr/local/carelink/display/`, reached at `http://<pi>:8081/display`, and
-  the sound after a click, in a phone browser as well.
+- **The display page in a phone browser**, and on the reference Pi (it runs
+  `STAY_HOME=1`, which leaves the page in place: the page is not a radio
+  feature).
 
 - **Quicker travel hand-over**: partly tested on 2026-11-15, on a trip, with
   the Pi on a phone's WiFi. The Pi, rebooted: its WiFi up at 17 s, the
