@@ -209,6 +209,7 @@ const FAULT_TEXT = {
 
 const LOW_GLUCOSE_IDS = [
  "802",
+ "803",
  "805",
  "809",
  "810",

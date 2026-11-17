@@ -231,7 +231,7 @@ const FaultText FAULT_TEXT[] = {
 };
 
 // Glucose alarms whose notification goes stale once the reading recovers.
-const char *LOW_GLUCOSE_IDS[]  = {"802", "805", "809", "810", "814", "815", "827"};
+const char *LOW_GLUCOSE_IDS[]  = {"802", "803", "805", "809", "810", "814", "815", "827"};
 const char *HIGH_GLUCOSE_IDS[] = {"816", "817", "823"};
 
 }  // namespace
