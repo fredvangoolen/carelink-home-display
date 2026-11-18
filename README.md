@@ -1,6 +1,6 @@
 # CareLink home display
 
-A small e-paper display that shows what a Medtronic MiniMed 770G/780G insulin
+A small battery powered e-paper display that shows what a Medtronic MiniMed 770G/780G insulin
 pump is doing, for the people who care for the person wearing it. It hangs in
 the house, wakes every five minutes, shows the current glucose reading, trend,
 active insulin and any pump alarm (with a beep), and goes back to sleep.
