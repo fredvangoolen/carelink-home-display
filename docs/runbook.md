@@ -67,7 +67,7 @@ git clone <this repository> && cd carelink-home-display
 ./appliance/provision.sh
 ```
 
-This installs the proxy, the Python environment, geckodriver, the four display units and a narrow sudoers rule. It also sets up automatic security updates, the on-disk system log, and the three radio features: the setup hotspot, the WiFi watchdog and the display's fallback hotspot `carelink-travel` (see [travel.md](travel.md)). It is idempotent: re-running it is how you upgrade a Pi later, and it will not disturb a token that is already installed.
+This installs the proxy, the Python environment, geckodriver, the four display units and a narrow sudoers rule. It also sets up automatic security updates, the on-disk system log, a check that keeps the Pi's own network name, and the three radio features: the setup hotspot, the WiFi watchdog and the display's fallback hotspot `carelink-travel` (see [travel.md](travel.md)). It is idempotent: re-running it is how you upgrade a Pi later, and it will not disturb a token that is already installed.
 
 For a Pi that will never leave one house and should not touch its radio (one that is also the house DNS server, say), run `STAY_HOME=1 ./appliance/provision.sh` instead: the same proxy and renewal path, none of the three radio features.
 
@@ -211,6 +211,7 @@ Every one of these must pass. Each exists because of a failure that is expensive
 - [ ] **Security updates install themselves.** `systemctl is-active unattended-upgrades` reads `active`, and `sudo unattended-upgrade --dry-run --debug | grep 'Allowed origins'` lists Debian-Security and Raspberry Pi Foundation. `provision.sh` sets this up, including a reboot at 14:00 when an update needs one. Install everything pending before the set leaves, so it does not start life rebooting.
 - [ ] **The setup-hotspot label is on the Pi**, and the label image is deleted from your laptop. `systemctl is-enabled carelink-setup-ap` reads `enabled`.
 - [ ] **The radio helpers are on.** `systemctl is-enabled carelink-wifi-watchdog.timer carelink-travel-ap.timer` reads `enabled` twice (not on a `STAY_HOME=1` Pi, which has neither).
+- [ ] **The name check is on.** `systemctl is-enabled carelink-mdns-name.timer` reads `enabled` (on every Pi, `STAY_HOME=1` included).
 - [ ] **The display runs the normal build**, not a test build: see [testing.md](testing.md).
 
 A set that fails the power-cut test is not ready, however well everything else reads.
@@ -325,6 +326,7 @@ A message appears only after about 15 minutes, so a short gap never shows. On th
 | Proxy page says *Logged in, but no data from CareLink* | The Pi cannot reach CareLink: no internet, DNS, or a CareLink outage. Common right after a power cut, when the router is slower than the Pi | Nothing to renew. The proxy retries every minute and the data is back within a minute of the network. Check the Pi's own connection (`ping -c3 clcloud.minimed.eu`) |
 | Proxy active, 401/403 in the journal | Token rejected upstream | Same — renewal |
 | Cold boot takes 15 s of radio | Slot 0 holds an absent network | Reorder slots next time a board is in your hand |
+| Display cannot find the proxy, but the Pi is up | avahi renamed the Pi `carelink-01-2.local` after a network hiccup | The name check puts it back within 2 minutes; `journalctl -u carelink-mdns-name` shows when. If it repeats every 2 minutes, another machine on the network has the same name |
 | Pi on WiFi dropped off the network and came back by itself | A router hiccup; the WiFi watchdog reconnected it | `journalctl -u carelink-wifi-watchdog` lists every reconnect. Many of them means a flaky router: move the Pi to a cable |
 | Display works, but *Device & Network* shows it on `carelink-travel` at home | The household WiFi is not getting it to the proxy; it fell back to the Pi's hotspot | It tries the household WiFi again every hour. If it stays, check the household WiFi name and password on the display, and mDNS on that network |
 | Everything fine, no data since a date | Check the patient changed phone or password | Ask before debugging |

@@ -195,6 +195,19 @@ net.ipv4.conf.all.arp_announce = 2
 EOF
 sudo sysctl -q -p /etc/sysctl.d/50-carelink-arp.conf
 
+say "own name on the network"
+# The display finds the proxy by name (carelink-01.local). After a WiFi
+# reconnect avahi can decide the name is taken, move to carelink-01-2.local
+# and stay there, which strands the display. This puts the name back every
+# 2 minutes; it never touches the radio, so a STAY_HOME Pi gets it too.
+# See the script.
+sudo install -d -m 0755 /opt/carelink-mdns-name
+sudo install -m 0755 "$SRC/appliance/mdns-name/carelink-mdns-name.sh" /opt/carelink-mdns-name/
+sudo install -m 0644 "$SRC/appliance/systemd/carelink-mdns-name.service" /etc/systemd/system/
+sudo install -m 0644 "$SRC/appliance/systemd/carelink-mdns-name.timer"   /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now carelink-mdns-name.timer >/dev/null 2>&1
+
 if [[ "$STAY_HOME" != 1 ]]; then
 say "fallback setup hotspot"
 # When the Pi boots with no network at all - taken somewhere with WiFi only -

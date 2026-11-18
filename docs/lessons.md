@@ -73,3 +73,13 @@ On a headless Pi, a disconnect during the WPA key exchange is treated as a
 wrong password. It asks for a new one, finds nobody to ask, and stops
 connecting to that network for good. One router hiccup was enough to keep a Pi
 offline for 10 hours. That is what `appliance/wifi-watchdog/` is for.
+
+## avahi can lose the Pi's name and not take it back
+
+After a WiFi reconnect, avahi may report a host name conflict, probably on
+its own echoed announcement, and rename the Pi `carelink-01-2.local`. It
+never renames it back. The Pi is up and the proxy is fine, but the display
+looks up the old name and finds nothing. Unplugging the Pi's cable makes
+this more likely to hurt: the Pi's address then changes, so the address the
+display had cached stops working too, and only the name is left.
+`appliance/mdns-name/` restarts avahi when the name is wrong.

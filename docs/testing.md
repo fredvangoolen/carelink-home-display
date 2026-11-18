@@ -71,6 +71,14 @@ Chrome, and `--check` reading it. The page, the desktop monitor from the
 command line and from its menu launcher (`install-linux.sh`, Linux Mint
 22.3, Cinnamon) were then used by hand and worked.
 
+The name check (`appliance/mdns-name/`), 2026-11-19 on a staging set on
+WiFi only: provisioned from the branch, timer enabled, a run with the right
+name did nothing. Then the Pi was renamed by hand
+(`busctl ... SetHostName s <name>-2`) at 00:16:32; the next timer run, at
+00:18:20, logged the wrong name and restarted avahi, and the desktop
+resolved the Pi's own `.local` name again. The real trigger, a WiFi drop
+that makes avahi rename the Pi, has not been reproduced on purpose.
+
 ## Not tested yet
 
 - **The alarm sound heard by ear** (desktop *Monitor → Test sound*, and the

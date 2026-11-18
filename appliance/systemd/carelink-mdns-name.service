@@ -1,0 +1,7 @@
+[Unit]
+Description=Give the Pi its own mDNS name back after avahi renamed it
+After=avahi-daemon.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/carelink-mdns-name/carelink-mdns-name.sh

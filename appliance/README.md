@@ -127,6 +127,25 @@ Ethernet. `journalctl -u carelink-wifi-watchdog` lists every reconnect, which
 also shows a flaky router. Test it on a Pi that is on the cable with
 `sudo IGNORE_ETHERNET=1 /opt/carelink-wifi-watchdog/carelink-wifi-watchdog.sh`.
 
+## Own name on the network
+
+The display finds the proxy by its mDNS name, `carelink-01.local`. When
+avahi decides another machine already has that name, it renames the Pi to
+`carelink-01-2.local` and never changes back, so the display can no longer
+find the proxy. This happened on 2026-11-18 to a Pi on WiFi only: the router
+dropped its WiFi for two minutes, and during the reconnect avahi reported a
+"Host name conflict". Most likely it heard its own announcement come back,
+because no other machine had the name. Restarting avahi brought the name
+back.
+
+`carelink-mdns-name.timer` checks every 2 minutes. It asks avahi which name
+it uses (over D-Bus), compares it with `hostname`, and restarts avahi when
+they differ. It never touches the radio, so a `STAY_HOME=1` Pi has it too.
+`journalctl -u carelink-mdns-name` lists every restart. If the restart line
+comes back every 2 minutes, a second machine really does use the name;
+rename one of the two. To test it, rename the Pi by hand and wait 2 minutes:
+`sudo busctl call org.freedesktop.Avahi / org.freedesktop.Avahi.Server SetHostName s carelink-01-2`.
+
 ## Display fallback hotspot (carelink-travel)
 
 The display normally reaches the proxy over the household network (plan A).
