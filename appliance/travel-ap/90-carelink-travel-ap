@@ -1,0 +1,31 @@
+#!/bin/sh
+#
+# NetworkManager dispatcher hook: re-decide the display's fallback hotspot
+# the moment the Pi's own WiFi goes down or comes up, instead of at the next
+# run of carelink-travel-ap.timer, up to a minute later.
+#
+# Why it matters: the radio runs the Pi's WiFi and the hotspot on ONE
+# channel. A household router that changed its 2.4 GHz channel every 6 hours
+# dropped the Pi each time, and for up to a minute the hotspot still held the
+# old channel while the Pi tried to rejoin on the new one. Once (2026-11-20)
+# the chip came out of that failing every WPA handshake for 45 minutes. On
+# "down" the hotspot now leaves the radio at once; on "up" it follows the
+# Pi's WiFi to its new channel at once.
+#
+# Installed by provision.sh as /etc/NetworkManager/dispatcher.d/
+# 90-carelink-travel-ap (root-owned, not world-writable, or NetworkManager
+# ignores it). It only starts the existing service, which makes every
+# decision: one place for the logic. --no-block, because a dispatcher hook
+# that waits holds up NetworkManager's other hooks, and the service itself
+# calls nmcli.
+#
+# Arguments from NetworkManager: $1 = interface, $2 = action.
+
+[ "$1" = "${CARELINK_STA:-wlan0}" ] || exit 0
+
+case "$2" in
+  up|down)
+    systemctl start --no-block carelink-travel-ap.service
+    ;;
+esac
+exit 0

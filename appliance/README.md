@@ -172,7 +172,12 @@ station and one access point at once, on **one channel** (`iw list`:
 `#{ managed } <= 1, #{ AP } <= 1, #channels <= 1`), and the display is
 2.4 GHz only. So `carelink-travel-ap.service` — started at boot as soon as
 the setup hotspot has decided it is not needed (measured 2026-11-15: the Pi's
-WiFi is up 17 s after boot), and then by its timer every minute:
+WiFi is up 17 s after boot), then by its timer every minute, and at once
+whenever the Pi's WiFi goes down or comes up (a NetworkManager dispatcher
+hook, `/etc/NetworkManager/dispatcher.d/90-carelink-travel-ap`). The hook is
+there for routers that change channel: without it the hotspot held the old
+channel for up to a minute while the Pi tried to rejoin on the new one, and
+once that left the WiFi chip failing every handshake (see "WiFi watchdog"):
 
 - moves the Pi's own WiFi to 2.4 GHz if it is on 5 GHz, by tying that
   profile to the strongest 2.4 GHz radio of the same network

@@ -140,6 +140,17 @@ reconnects and clears the counter; a connected run clears a leftover
 counter. Not yet seen: the next real channel change wedging the chip and the
 watchdog clearing it unattended.
 
+The hotspot's dispatcher hook (`90-carelink-travel-ap`), same evening on the
+same set, on Ethernet and WiFi, started right after a timer run so the timer
+could not be what answered: `wlan0` disconnected at 22:34:30, the service
+started within a second and the hotspot was on channel 1 (Ethernet, WiFi
+unused) at 22:34:32; `wlan0` reconnected at 22:34:43 and the hotspot was back
+on the router's channel 6 at 22:34:45. Then on WiFi only (cable out, the
+test run detached with `systemd-run`): `wlan0` disconnected at 22:42:39, the
+hotspot was down at 22:42:40 ("wlan0 is disconnected"); `wlan0` reconnected
+at 22:42:55, the hotspot was up on channel 6 at 22:42:56. Not yet seen: a real
+channel change with the hook in place.
+
 ## 24-hour statistics that do not add up
 
 2026-11-20, phone out of contact: CareLink sent timeInRange 0 with above 8,

@@ -272,6 +272,10 @@ sudo install -d -m 0755 /opt/carelink-travel-ap
 sudo install -m 0755 "$SRC/appliance/travel-ap/carelink-travel-ap.sh" /opt/carelink-travel-ap/
 sudo install -m 0644 "$SRC/appliance/systemd/carelink-travel-ap.service" /etc/systemd/system/
 sudo install -m 0644 "$SRC/appliance/systemd/carelink-travel-ap.timer"   /etc/systemd/system/
+# The timer checks once a minute; this hook re-decides at once when the Pi's
+# WiFi goes down or up (a router's channel change). See the hook's header.
+sudo install -m 0755 -o root -g root "$SRC/appliance/travel-ap/90-carelink-travel-ap" \
+    /etc/NetworkManager/dispatcher.d/90-carelink-travel-ap
 # One password per Pi, made once and kept: the display has it in its NVS,
 # and a re-run must not cut the display off. A profile made by hand before
 # this existed keeps its password too.
