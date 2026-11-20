@@ -122,8 +122,9 @@ without the URL ("No trend from proxy", the other screens unaffected).
 `DELIVERY_SUSPEND`, `lastSG` empty with `NO_DATA_FROM_PUMP`, pump and phone
 in range): the desktop monitor's `--check` against the reference proxy shows
 `DELIVERY SUSPEND [pump]` instead of "No sensor data" (now worded "Pump
-suspended" on all three); the travel board, flashed, logs the banner. Not yet seen: the board's panel once the link
-fault is confirmed (three cycles), and the page with live data.
+suspended" on all three); the travel board, flashed, logs the banner. Seen on the panel too (user, same evening): "Pump suspended" shown
+over "No sensor data", bold titles and trend labels fine. Not yet seen:
+the page with live data.
 
 ## The WiFi watchdog's radio cycle
 
