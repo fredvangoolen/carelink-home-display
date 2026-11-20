@@ -4,7 +4,7 @@
   <title id="t">The controls of the display</title>
   <desc id="d">Front view of the M5Stack Core Ink display with six numbered
   parts: side switch, power button, top button, screen, USB-C socket and reset
-  button on the back; below it the four screens in the order the side switch steps
+  button on the back; below it the five screens in the order the side switch steps
   through them.</desc>
 
   <defs>
@@ -19,8 +19,11 @@
   <rect width="1000" height="820" fill="#ffffff"/>
 
   <!-- ============================================================ device -->
-  <!-- body, with the recess on the right that holds the switch and button -->
-  <path d="M380 120 H620 Q640 120 640 140 V226 L634 232 V336 L640 342 V492
+  <!-- body, with the recess on the right that holds the switch (from level
+       with the screen's top to about its middle): the wheel stays inside the
+       body's outline. The power button sits lower, level with the screen's
+       bottom edge -->
+  <path d="M380 120 H620 Q640 120 640 140 V192 L631 201 V311 L640 320 V492
            Q640 512 620 512 H380 Q360 512 360 492 V140 Q360 120 380 120 Z"
         fill="#f5f5f3" stroke="#6b7680" stroke-width="2"/>
   <!-- top button -->
@@ -35,8 +38,9 @@
     <circle cx="392" cy="482" r="7"/><circle cx="608" cy="482" r="7"/>
   </g>
   <!-- side switch and power button -->
-  <rect x="634" y="246" width="13" height="30" rx="3" fill="#2b2f33"/>
-  <rect x="634" y="300" width="8" height="22" rx="2" fill="#c9ced2" stroke="#6b7680" stroke-width="1.2"/>
+  <rect x="629" y="236" width="10" height="44" rx="3" fill="#2b2f33"/>
+  <path d="M632 258 H639" stroke="#8a939b" stroke-width="1.5"/>
+  <rect x="634" y="390" width="9" height="20" rx="4.5" fill="#dfe7ec" stroke="#6b7680" stroke-width="1.2"/>
   <!-- USB-C socket on the underside -->
   <rect x="484" y="507" width="32" height="8" rx="4" fill="#2b2f33"/>
 
@@ -55,8 +59,8 @@
 
   <!-- ============================================== markers on the drawing -->
   <g stroke="#c2410c" stroke-width="1.5" fill="none">
-    <path d="M649 261 H661"/>
-    <path d="M644 311 H661"/>
+    <path d="M643 258 H661"/>
+    <path d="M645 400 H661"/>
     <path d="M509 99 V110"/>
     <path d="M339 297 H402"/>
     <path d="M500 517 V531"/>
@@ -64,12 +68,12 @@
   <circle cx="404" cy="297" r="2.5" fill="#c2410c"/>
   <g font-size="13" font-weight="bold" text-anchor="middle">
     <g fill="#c2410c">
-      <circle cx="672" cy="261" r="11"/><circle cx="672" cy="311" r="11"/>
+      <circle cx="672" cy="258" r="11"/><circle cx="672" cy="400" r="11"/>
       <circle cx="509" cy="88" r="11"/><circle cx="328" cy="297" r="11"/>
       <circle cx="500" cy="542" r="11"/>
     </g>
     <g fill="#ffffff">
-      <text x="672" y="265.5">1</text><text x="672" y="315.5">2</text>
+      <text x="672" y="262.5">1</text><text x="672" y="404.5">2</text>
       <text x="509" y="92.5">3</text><text x="328" y="301.5">4</text>
       <text x="500" y="546.5">5</text>
     </g>
@@ -134,32 +138,40 @@
     <text x="92" y="590" font-size="12" fill="#4b5560" text-anchor="middle">back</text>
   </g>
 
-  <!-- ===================================================== the four screens -->
+  <!-- ===================================================== the five screens -->
   <rect x="30" y="612" width="940" height="1" fill="#d5dade"/>
-  <text x="30" y="642" font-size="16" font-weight="bold" fill="#1f2933">The four screens, in the order the side switch steps through them</text>
+  <text x="30" y="642" font-size="16" font-weight="bold" fill="#1f2933">The five screens, in the order the side switch steps through them</text>
 
   <g font-size="10.5" fill="#1f2933">
-    <g transform="translate(180 662)">
+    <g transform="translate(105 662)">
       <use href="#mini"/>
       <text x="10" y="50" font-size="34" font-weight="bold">112</text>
       <path d="M72 36 h8 v-4 l8 6.500 l-8 6.500 v-4 h-8 z"/>
       <text x="10" y="68">mg/dL</text>
       <text x="10" y="90">3 min ago</text>
     </g>
-    <g transform="translate(360 662)">
+    <g transform="translate(275 662)">
+      <use href="#mini"/>
+      <text x="8" y="18">3 h</text>
+      <path d="M8 40 H92 M8 76 H92" stroke="#2b2f33" stroke-width="1" stroke-dasharray="3 3"/>
+      <polyline points="8,60 18,48 28,36 38,34 48,38 56,52 66,64 76,70 84,66" fill="none" stroke="#1f2933" stroke-width="2.5"/>
+      <circle cx="84" cy="66" r="3.5" fill="#1f2933"/>
+      <text x="50" y="94" text-anchor="middle" font-size="9">08   09   10</text>
+    </g>
+    <g transform="translate(445 662)">
       <use href="#mini"/>
       <text x="10" y="24">In range</text><text x="90" y="24" text-anchor="end">89 %</text>
       <text x="10" y="44">Above</text><text x="90" y="44" text-anchor="end">9 %</text>
       <text x="10" y="64">Below</text><text x="90" y="64" text-anchor="end">2 %</text>
       <text x="10" y="84">Average</text><text x="90" y="84" text-anchor="end">131</text>
     </g>
-    <g transform="translate(540 662)">
+    <g transform="translate(615 662)">
       <use href="#mini"/>
       <text x="10" y="28">Reservoir</text><text x="90" y="28" text-anchor="end">82 %</text>
       <text x="10" y="54">Battery</text><text x="90" y="54" text-anchor="end">100 %</text>
       <text x="10" y="80">Sensor</text><text x="90" y="80" text-anchor="end">110 h</text>
     </g>
-    <g transform="translate(720 662)">
+    <g transform="translate(785 662)">
       <use href="#mini"/>
       <text x="10" y="28">WiFi</text><text x="90" y="28" text-anchor="end">home</text>
       <text x="10" y="54">Signal</text><text x="90" y="54" text-anchor="end">good</text>
@@ -168,15 +180,15 @@
   </g>
 
   <g stroke="#c2410c" stroke-width="2" fill="none" marker-end="url(#arrow)">
-    <path d="M290 712 H350"/><path d="M470 712 H530"/>
-    <path d="M650 712 H710"/>
+    <path d="M215 712 H265"/><path d="M385 712 H435"/><path d="M555 712 H605"/><path d="M725 712 H775"/>
   </g>
 
   <g font-size="13.5" font-weight="bold" fill="#1f2933" text-anchor="middle">
-    <text x="230" y="782">Glucose</text>
-    <text x="410" y="782">Statistics</text>
-    <text x="590" y="782">Pump</text>
-    <text x="770" y="782">Device &amp; Network</text>
+    <text x="155" y="782">Glucose</text>
+    <text x="325" y="782">Trend</text>
+    <text x="495" y="782">Statistics</text>
+    <text x="665" y="782">Pump</text>
+    <text x="835" y="782">Device &amp; Network</text>
   </g>
   <text x="500" y="806" font-size="12.5" fill="#4b5560" text-anchor="middle">Flick down follows the arrows, flick up goes back; after the last screen comes the first. At the next reading the display returns to Glucose by itself.</text>
 </svg>

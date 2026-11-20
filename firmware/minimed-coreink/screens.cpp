@@ -572,6 +572,114 @@ void draw_stats_screen(LovyanGFX &g, const State &s) {
   draw_kv_row(g, y, "Average", FONT_LABEL, avg, FONT_UNIT, COLOR_BLACK);
 }
 
+// The last 3 hours as a line, the way the CareLink app shows it, cut down to
+// what a 200 px black-and-white panel carries: no colour bands, so the two
+// thresholds this display already uses (70 and 180) are dashed lines, and
+// the zone below 70 - the dangerous end - is dotted, as the stats screen
+// gives it the heaviest ink.
+//
+// The window ends NOW, not at the newest reading, so a sensor that stopped
+// an hour ago shows as a line that stops an hour short of the right edge.
+// Both ends are local wall clock: the readings arrive that way from CareLink
+// and "now" is shifted the same way the alarm time is compared.
+static const int TREND_Y_MIN = 40;    // the sensor reads nothing below 40
+static const int TREND_Y_MAX = 300;   // higher readings are pinned to the top
+static const long TREND_WINDOW_S = (long)TREND_SLOTS * TREND_STEP_S;
+
+void draw_trend_screen(LovyanGFX &g, const State &s, const Config &c) {
+  g.fillScreen(COLOR_WHITE);
+  int top = draw_screen_header(g, "LAST 3 HOURS");
+  // Header's right side: the unit, so the scale's bare numbers mean something.
+  int uw = text_width(g, "mg/dL", FONT_LABEL);
+  draw_text(g, "mg/dL", PANEL_W - MARGIN - uw, 4, FONT_LABEL, COLOR_BLACK);
+
+  const int label_h = font_height(g, FONT_LABEL);
+  const int label_w = text_width(g, "180", FONT_LABEL);
+  const int x0 = MARGIN;
+  const int x1 = PANEL_W - MARGIN - label_w - 4;      // plot's right edge
+  const int y0 = top + 2;                              // plot's top
+  const int y1 = PANEL_H - label_h - 6;                // plot's baseline
+  auto ymap = [&](int v) {
+    if (v < TREND_Y_MIN) v = TREND_Y_MIN;
+    if (v > TREND_Y_MAX) v = TREND_Y_MAX;
+    return y1 - (v - TREND_Y_MIN) * (y1 - y0) / (TREND_Y_MAX - TREND_Y_MIN);
+  };
+
+  // Below 70, dotted.
+  int ylow = ymap(HYPO_THRESHOLD_MGDL);
+  for (int y = ylow + 3; y < y1; y += 3)
+    for (int x = x0 + ((y / 3) % 2) * 2; x <= x1; x += 4)
+      g.drawPixel(x, y, COLOR_BLACK);
+  // The two thresholds, dashed, labelled on the right.
+  for (int v : {HYPO_THRESHOLD_MGDL, HYPER_THRESHOLD_MGDL}) {
+    int y = ymap(v);
+    for (int x = x0; x <= x1; x += 6) g.drawFastHLine(x, y, 3, COLOR_BLACK);
+    char lab[8];
+    snprintf(lab, sizeof(lab), "%d", v);
+    draw_text(g, lab, x1 + 4, y - label_h / 2, FONT_LABEL, COLOR_BLACK);
+  }
+  g.drawFastHLine(x0, y1, x1 - x0 + 1, COLOR_BLACK);
+
+  // The window, in local wall clock. Without a valid clock the newest reading
+  // stands in for now: better a correct line with an unknown age than none.
+  time_t now = time(nullptr);
+  time_t wend = now > 1600000000
+                  ? now + (time_t)(c.timezone + s.dstDelta) * 3600
+                  : s.trendEnd;
+  time_t wstart = wend - TREND_WINDOW_S;
+  auto xmap = [&](time_t t) {
+    return x0 + (int)((long)(t - wstart) * (x1 - x0) / TREND_WINDOW_S);
+  };
+
+  // Hour ticks and labels along the baseline.
+  if (wend) {
+    for (time_t h = (wstart / 3600 + 1) * 3600; h <= wend; h += 3600) {
+      int x = xmap(h);
+      g.drawFastVLine(x, y1, 4, COLOR_BLACK);
+      struct tm tm;
+      gmtime_r(&h, &tm);
+      // Hours only: "08:00 09:00 10:00" ran together on the panel.
+      char lab[8];
+      snprintf(lab, sizeof(lab), "%02d", tm.tm_hour);
+      int w = text_width(g, lab, FONT_LABEL);
+      int lx = x - w / 2;
+      if (lx < 0) lx = 0;
+      if (lx + w > x1) lx = x1 - w;
+      draw_text(g, lab, lx, y1 + 5, FONT_LABEL, COLOR_BLACK);
+    }
+  }
+
+  // The line: three pixels thick, broken wherever a slot has no reading.
+  int drawn = 0, px = -1, py = -1;
+  for (int i = 0; i < TREND_SLOTS && s.trendEnd; i++) {
+    time_t t = s.trendEnd - (time_t)(TREND_SLOTS - 1 - i) * TREND_STEP_S;
+    int v = s.trendSg[i];
+    if (!v || t < wstart || t > wend) { px = -1; continue; }
+    int x = xmap(t), y = ymap(v);
+    if (px >= 0) {
+      for (int d = -1; d <= 1; d++) g.drawLine(px, py + d, x, y + d, COLOR_BLACK);
+    } else {
+      g.fillRect(x - 1, y - 1, 3, 3, COLOR_BLACK);
+    }
+    px = x; py = y;
+    drawn++;
+  }
+  // The newest reading as a dot with a white ring, as in the app.
+  if (px >= 0) {
+    g.fillCircle(px, py, 5, COLOR_WHITE);
+    g.fillCircle(px, py, 4, COLOR_BLACK);
+  }
+
+  if (!drawn) {
+    const char *msg = s.trendEnd ? "No readings in 3 h" : "No trend from proxy";
+    int w = text_width(g, msg, FONT_LABEL);
+    int mx = x0 + (x1 - x0 - w) / 2;
+    int my = (y0 + y1) / 2 - label_h / 2;
+    g.fillRect(mx - 3, my - 2, w + 6, label_h + 4, COLOR_WHITE);
+    draw_text(g, msg, mx, my, FONT_LABEL, COLOR_BLACK);
+  }
+}
+
 void draw_pump_screen(LovyanGFX &g, const State &s, const Config &c) {
   // Between glucose and the technical screen: what a caregiver plans around
   // rather than reacts to. None of it is urgent enough for the main screen,
@@ -681,6 +789,7 @@ void draw_info_screen(LovyanGFX &g, const State &s, const Config &c,
 void draw_current_screen(LovyanGFX &g, int screen, const State &s,
                          const Config &c, time_t session_start) {
   switch (screen) {
+    case SCREEN_TREND: draw_trend_screen(g, s, c);                 break;
     case SCREEN_STATS: draw_stats_screen(g, s);                    break;
     case SCREEN_PUMP:  draw_pump_screen(g, s, c);                  break;
     case SCREEN_INFO:  draw_info_screen(g, s, c, session_start);   break;

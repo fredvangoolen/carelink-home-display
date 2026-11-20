@@ -87,8 +87,10 @@ enum { BATT_EMPTY = 0, BATT_HALF = 1, BATT_FULL = 2 };
 // hop per row). Removed in November 2026: not useful enough for the person
 // holding the display, and confusing to them; the same chain is in the
 // serial log's "comms" line.
-enum { SCREEN_MAIN = 0, SCREEN_STATS = 1, SCREEN_PUMP = 2, SCREEN_INFO = 3,
-       SCREEN_COUNT = 4 };
+// The trend comes straight after the main screen: it is the one a caregiver
+// wants next ("is it going up or down, and since when"), one flick away.
+enum { SCREEN_MAIN = 0, SCREEN_TREND = 1, SCREEN_STATS = 2, SCREEN_PUMP = 3,
+       SCREEN_INFO = 4, SCREEN_COUNT = 5 };
 
 // Which way a flick moves through that list. Down walks forward in the order
 // above; up walks back the way you came, which is the only reason the second

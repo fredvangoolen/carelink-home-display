@@ -13,7 +13,7 @@
 // it was measured on this board.
 //
 // Feature-complete against main_m5coreink.py: power hold, config, WiFi,
-// fetch, clock, parse, all four screens, the toggle, deep-sleep scheduling,
+// fetch, clock, parse, all five screens, the toggle, deep-sleep scheduling,
 // fault codes, the buzzer and the AP setup portal. What remains is phase 6 -
 // an unattended soak against the MicroPython board, then the cutover call.
 //
@@ -785,6 +785,45 @@ static bool fetch_pump_data(const Config &c, State &s) {
   return true;
 }
 
+// The last 3 hours for the trend screen, from the proxy's /carelink/trend:
+//   {"end": "2026-08-15T21:09:00", "step": 300, "sg": [36 ints, oldest first]}
+// A separate small request rather than part of nohistory: the full sgs list
+// is ~38 KB and would not survive this board's heap, and a proxy too old to
+// have the URL answers 404, which leaves only this screen empty.
+//
+// Returns false (and leaves s.trend* empty) on any failure; the caller then
+// carries the previous trend forward, as it does lastGoodSg.
+static bool fetch_trend(const Config &c, State &s) {
+  String body;
+  int status = 0;
+  time_t ignored = 0;
+  if (!http_get(c, "carelink/trend", body, status, ignored)) {
+    Serial.printf("trend: none (status %d)\n", status);
+    return false;
+  }
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, body);
+  if (err || !doc.is<JsonObject>()) {
+    Serial.printf("trend: unreadable answer (%s)\n", err ? err.c_str() : "not an object");
+    return false;
+  }
+  JsonArrayConst sg = doc["sg"];
+  time_t end = parse_alarm_datetime(doc["end"] | "");   // local, naive: same rule
+  if ((doc["step"] | 0) != TREND_STEP_S || sg.size() != (size_t)TREND_SLOTS || !end) {
+    Serial.println("trend: answer is not 36 readings 5 min apart, ignored");
+    return false;
+  }
+  int n = 0;
+  for (int i = 0; i < TREND_SLOTS; i++) {
+    int v = sg[i] | 0;
+    s.trendSg[i] = (v > 0 && v < 1000) ? (uint16_t)v : 0;
+    if (s.trendSg[i]) n++;
+  }
+  s.trendEnd = end;
+  Serial.printf("trend: %d of %d readings, newest %s\n", n, TREND_SLOTS, doc["end"] | "");
+  return true;
+}
+
 // What the last battery decision was actually made on. File scope because
 // dump_state() reports it and refresh_battery() sets it, and they sit at
 // opposite ends of this file.
@@ -835,6 +874,17 @@ static void dump_state(const State &s, const Config &c) {
   Serial.printf("  dstDelta      %d\n", s.dstDelta);
   Serial.printf("  stats         inRange %d  above %d  below %d  avgSG %d\n",
                 s.timeInRange, s.aboveHyper, s.belowHypo, s.averageSG);
+  if (s.trendEnd) {
+    char tw[24];
+    struct tm tm;
+    gmtime_r(&s.trendEnd, &tm);   // already local wall clock
+    strftime(tw, sizeof(tw), "%Y-%m-%d %H:%M", &tm);
+    int n = 0;
+    for (int i = 0; i < TREND_SLOTS; i++) if (s.trendSg[i]) n++;
+    Serial.printf("  trend         %d readings, newest %s local\n", n, tw);
+  } else {
+    Serial.println("  trend         none");
+  }
   Serial.println("---------------");
 }
 
@@ -1081,7 +1131,7 @@ static void arm_toggle_wake() {
 //
 // A plain struct, where MicroPython had to serialise JSON in and out of RTC
 // memory and re-hydrate it - about 120 lines that simply do not exist here.
-#define RTC_MAGIC 0x4D4D030Eu   // bump when the layout changes (lost the Communication screen fields)
+#define RTC_MAGIC 0x4D4D030Fu   // bump when the layout changes (trend readings in State)
 
 struct RtcState {
   uint32_t magic;
@@ -1608,6 +1658,12 @@ void setup() {
       ok = fetch_pump_data(cfg, s);
     }
   }
+  // The trend only after a proxy that answered with real data: a dead proxy
+  // must not cost a second timeout, and an empty one has no readings either.
+  if (ok && s.link != LINK_NO_PROXY && s.link != LINK_PROXY_NO_DATA &&
+      s.link != LINK_PROXY_LOGIN) {
+    fetch_trend(cfg, s);
+  }
   // Counts toward the hourly plan A retry; a cycle that just made it starts over.
   rtc.planb_cycles = (is_fallback(slot) && !retry_a) ? rtc.planb_cycles + 1 : 0;
   int64_t fetch_ms = (esp_timer_get_time() - t_fetch) / 1000;
@@ -1662,6 +1718,13 @@ void setup() {
     // actually draw; computing it next to the assignment to rtc.snap printed
     // a stale 0 on the very cycle it was being established.
     s.lastGoodSg = s.sg > 0 ? s.sg : rtc.snap.lastGoodSg;
+    // Same again for the trend: one failed trend request must not blank the
+    // screen. Its own end time keeps it honest - an old trend just stops
+    // short of the right edge.
+    if (!s.trendEnd) {
+      memcpy(s.trendSg, rtc.snap.trendSg, sizeof(s.trendSg));
+      s.trendEnd = rtc.snap.trendEnd;
+    }
     // Same trap as lastGoodSg: rtc.snap is replaced wholesale below, so
     // without this the battery step resets to "no history" every cycle and
     // the hysteresis has nothing to be sticky against.

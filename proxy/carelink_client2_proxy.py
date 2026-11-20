@@ -13,6 +13,8 @@
 #      http://<serveraddr>:8081/carelink/nohistory # no history data
 #      http://<serveraddr>:8081/carelink/fallback  # the display's plan B
 #                                                  # hotspot, if this Pi runs one
+#      http://<serveraddr>:8081/carelink/trend     # the last 3 h of readings,
+#                                                  # compact, for the trend screen
 #
 #  Author:
 #
@@ -53,6 +55,7 @@
 import carelink_client2
 import argparse
 import time
+import calendar
 import json
 import os
 import sys
@@ -83,6 +86,14 @@ MAX_POST_BYTES = 16 * 1024
 APIURL   = "carelink"
 OPT_NOHISTORY = "nohistory"
 OPT_FALLBACK  = "fallback"
+OPT_TREND     = "trend"
+
+# The trend screen's window: 36 readings, 5 minutes apart, 3 hours. The
+# display has no room for the full sgs list (about 38 KB of a 119 KB answer
+# on a board whose largest free block is about 55 KB), so the proxy cuts it
+# down to one small integer per slot.
+TREND_STEP_S = 300
+TREND_SLOTS  = 36
 
 # The display's plan B: the private hotspot this Pi runs next to its own
 # WiFi (appliance/travel-ap). Serving its name and password here lets a
@@ -203,6 +214,53 @@ def fallback_network():
    if not 8 <= len(psk) <= 63:
       return None
    return {"ssid": FALLBACK_SSID, "psk": psk}
+
+
+#################################################
+# The last 3 hours of readings, for the trend screen
+#################################################
+def parse_local(stamp):
+   # sgs timestamps are LOCAL wall-clock time with no offset, like
+   # lastAlarm.dateTime (2026-08-15: a reading stamped 21:09:00 arrived with
+   # lastConduitUpdateServerDateTime 19:15 UTC, in CEST). They are kept
+   # local here and on the display, which reads them with the same local
+   # clock as the alarm time, so one rule decides both. Naive arithmetic:
+   # across a DST change the window shows an hour's gap or overlap, for
+   # three hours, twice a year.
+   try:
+      return calendar.timegm(time.strptime(stamp[:19], "%Y-%m-%dT%H:%M:%S"))
+   except (TypeError, ValueError):
+      return None
+
+
+def get_trend_data(data):
+   # {"end": "<local timestamp of the newest reading>", "step": 300,
+   #  "sg": [36 values, oldest first, 0 = no reading in that slot]}
+   # or None when there are no readings to show.
+   if not (isinstance(data, dict) and isinstance(data.get("patientData"), dict)):
+      return None
+   sgs = data["patientData"].get("sgs")
+   if not isinstance(sgs, list):
+      return None
+   points = []
+   for e in sgs:
+      if not isinstance(e, dict):
+         continue
+      t = parse_local(e.get("timestamp"))
+      sg = e.get("sg")
+      # 0 is how CareLink marks a slot with no value (warm-up, lost signal).
+      if t is None or not isinstance(sg, (int, float)) or sg <= 0:
+         continue
+      points.append((t, int(sg), e["timestamp"][:19]))
+   if not points:
+      return None
+   end_t, _, end_stamp = max(points)
+   slots = [0] * TREND_SLOTS
+   for t, sg, _ in points:
+      back = round((end_t - t) / TREND_STEP_S)
+      if 0 <= back < TREND_SLOTS:
+         slots[TREND_SLOTS - 1 - back] = sg
+   return {"end": end_stamp, "step": TREND_STEP_S, "sg": slots}
 
 
 def since(t):
@@ -334,6 +392,18 @@ class MyServer(BaseHTTPRequestHandler):
          status_code = HTTPStatus.OK
          content_type = "application/json"
          #print("Only essential data requested")
+      elif self.path.strip("/") == APIURL+'/'+OPT_TREND:
+         # 404 when there is nothing to draw, so a display treats "no
+         # readings" and "an older proxy without this URL" the same way.
+         trend = get_trend_data(recentData)
+         if trend:
+            response = json.dumps(trend, separators=(",", ":"))
+            status_code = HTTPStatus.OK
+            content_type = "application/json"
+         else:
+            response = ""
+            status_code = HTTPStatus.NOT_FOUND
+            content_type = "text/html"
       elif self.path.strip("/") == APIURL+'/'+OPT_FALLBACK:
          # The display's plan B hotspot. Never logged: it carries a password.
          fallback = fallback_network()

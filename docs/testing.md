@@ -79,6 +79,24 @@ name did nothing. Then the Pi was renamed by hand
 resolved the Pi's own `.local` name again. The real trigger, a WiFi drop
 that makes avahi rename the Pi, has not been reproduced on purpose.
 
+## The trend screen
+
+2026-11-20, on a staging set: the proxy with `/carelink/trend` installed on
+the Pi by hand (checksum against the working tree) and restarted with its
+token kept; `nohistory` unchanged (200), `trend` 200 with 191 bytes. The
+board on USB, flashed, fetched it on its first cycle (`trend: 36 of 36
+readings`; fetch and parse together 159 ms on plan A). The screen was
+checked on the panel against live data: line, dot, dashed 70 and 180, dots
+below 70, hour labels. Those were `08:00 09:00 10:00` at first, which ran
+together; changed to hours only and reflashed, checked on the panel.
+`get_trend_data()` was checked on a saved day of CareLink data and on empty
+input (no `patientData`, no `sgs`, only zeros: all 404).
+
+Not yet seen: the trend across a DST change (expected: an hour's gap or
+overlap for three hours), a sensor gap on the panel (the line should break),
+a reading above 300 (pinned to the top), and a display against a proxy
+without the URL ("No trend from proxy", the other screens unaffected).
+
 ## Not tested yet
 
 - **The alarm sound heard by ear** (desktop *Monitor → Test sound*, and the

@@ -22,12 +22,16 @@ treat changes there as risky.
 
 ## The contract between the two halves
 
-The firmware and the proxy share no code, only two URLs. A change to either
+The firmware and the proxy share no code, only three URLs. A change to either
 JSON shape is a breaking change for the other side — change both or neither.
 `desktop/` and the proxy's own `/display` page read `nohistory` too:
 
 - `GET /carelink/nohistory` — current pump data. If a field changes and the
   display breaks, look at the real response with `curl`; do not assume.
+- `GET /carelink/trend` — the last 3 hours for the trend screen:
+  `{"end": "<local timestamp>", "step": 300, "sg": [36 values, oldest first,
+  0 = none]}`, or 404. `end` is local wall clock, read like
+  `lastAlarm.dateTime`. Only the firmware reads it so far.
 - `GET /carelink/fallback` — `{"ssid": ..., "psk": ...}` for the Pi's travel
   hotspot, or 404. The display stores it in WiFi slot 2.
 
@@ -79,7 +83,7 @@ arduino-cli compile --fqbn "$FQBN" --upload -p <port> firmware/minimed-coreink
 Everything builds on `proxy/carelink_client2.py` (`CareLinkClient`):
 
 - `carelink_client2_proxy.py` — the daemon. Serves `GET /` (status),
-  `/carelink`, `/carelink/nohistory`, `/carelink/fallback`, and `/display`
+  `/carelink`, `/carelink/nohistory`, `/carelink/trend`, `/carelink/fallback`, and `/display`
   (the live page in `proxy/display/`, from a fixed table of four files, with
   a strict CSP: it shows CareLink text on the origin that accepts the token
   POST, so data goes in as text only, never as HTML). When the token is

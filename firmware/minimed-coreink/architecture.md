@@ -41,7 +41,7 @@ design.
 | file | lines | contents |
 |---|---|---|
 | `minimed-coreink.ino` | 840 | the sketch: power, config, network, parsing, alarms, toggle, sleep |
-| `screens.cpp` / `.h` | 547 + 61 | all four screens and the drawing helpers |
+| `screens.cpp` / `.h` | 547 + 61 | all five screens and the drawing helpers |
 | `faults.cpp` / `.h` | 253 + 16 | pump fault code tables, **generated** |
 | `portal.cpp` / `.h` | 673 + 17 | the AP setup portal: network list, test before save |
 | `types.h` | 66 | `Config`, `State`, `state_init()` |
