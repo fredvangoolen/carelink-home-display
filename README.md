@@ -7,6 +7,11 @@ active insulin and any pump alarm (with a beep), and goes back to sleep.
 
 <img src="docs/img/coreink.jpg" alt="M5Stack Core Ink showing a glucose reading, trend arrow and active insulin" width="300">
 
+| Normal reading | No sensor data | No sensor data, 5 minutes on |
+|:---:|:---:|:---:|
+| <img src="docs/img/coreink-default.jpg" alt="Display showing 96 mg/dL with a steady trend arrow, 2.1 U active insulin, updated now" width="220"> | <img src="docs/img/coreink-no-sensor-data.jpg" alt="Display with dashes instead of a reading and the last good value, 104, in brackets" width="220"> | <img src="docs/img/coreink-no-sensor-data-5min.jpg" alt="Display with dashes, the last good value 133 in brackets, and a black banner: No sensor data (5 min)" width="220"> |
+| glucose, trend, active insulin, time of the reading | dashes; the last good reading in brackets | the same, with a banner once it lasts |
+
 It is two parts that are built, installed and taken on a trip together:
 
 | Part | Runs on | Directory | Licence |
