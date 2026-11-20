@@ -44,7 +44,9 @@ Three frontends read `nohistory` — the firmware, `desktop/minimed_desktop.py`
 and `proxy/display/display.js` — and must apply the same rules: reading age
 from epochs, the stale banner at 20 minutes, the link states, the alarm
 window with `lastAlarm.dateTime` read as local time, low/high alarms
-dropped once the reading recovers. Change them in all three or none.
+dropped once the reading recovers, and with no reading but the pump in
+range of the phone, the pump's banner before "No sensor data"; DELIVERY_SUSPEND
+reads "Pump suspended". Change them in all three or none.
 
 Plan A / plan B (docs/travel.md) spans firmware slot 2, `appliance/travel-ap/`
 and that endpoint. Document it as one feature, in `docs/travel.md`.

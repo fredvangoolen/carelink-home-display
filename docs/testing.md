@@ -116,6 +116,29 @@ overlap for three hours), a sensor gap on the panel (the line should break),
 a high peak on the panel (top labelled), and a display against a proxy
 without the URL ("No trend from proxy", the other screens unaffected).
 
+## The pump's banner before "No sensor data"
+
+2026-11-20, with the pump really suspended (`pumpBannerState`
+`DELIVERY_SUSPEND`, `lastSG` empty with `NO_DATA_FROM_PUMP`, pump and phone
+in range): the desktop monitor's `--check` against the reference proxy shows
+`DELIVERY SUSPEND [pump]` instead of "No sensor data" (now worded "Pump
+suspended" on all three); the travel board, flashed, logs the banner. Not yet seen: the board's panel once the link
+fault is confirmed (three cycles), and the page with live data.
+
+## The WiFi watchdog's radio cycle
+
+2026-11-20 on a staging set on WiFi only: the router's 2.4 GHz channel
+change (every 6 hours) left the chip failing every WPA handshake for 45
+minutes, and the watchdog's retries never cleared it; switching the radio
+off and on did. With the new watchdog installed (Pi on Ethernet, run with
+`IGNORE_ETHERNET=1` and `wlan0` disconnected in software): with one failure
+recorded it cycled the radio and was back on the network in 10 s, counter
+cleared. With `nmcli con up` forced to fail by a stand-in: run 1 no cycle
+(counter 1), runs 2 and 3 cycle the radio (counter 2, 3), the next real run
+reconnects and clears the counter; a connected run clears a leftover
+counter. Not yet seen: the next real channel change wedging the chip and the
+watchdog clearing it unattended.
+
 ## Not tested yet
 
 - **The alarm sound heard by ear** (desktop *Monitor → Test sound*, and the

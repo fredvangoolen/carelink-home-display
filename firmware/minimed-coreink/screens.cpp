@@ -50,6 +50,19 @@ static void draw_text(LovyanGFX &g, const char *s, int x, int y,
   g.setTextSize(1.0f);
 }
 
+// Bold by drawing twice, one pixel apart. The DejaVu fonts here have no bold
+// face, and a different font would change the metrics every layout below is
+// built on. Transparent background on both passes, or the second would erase
+// half of the first.
+static void draw_text_bold(LovyanGFX &g, const char *s, int x, int y,
+                           const lgfx::IFont *font, uint32_t color) {
+  g.setFont(font);
+  g.setTextSize(1.0f);
+  g.setTextColor(color);
+  g.drawString(s, x, y);
+  g.drawString(s, x + 1, y);
+}
+
 // Label left, value right-aligned to the right margin, bottoms aligned so a
 // small label sits on the same baseline as a larger value. The value is
 // placed first and the label truncated to what is left, because if something
@@ -288,7 +301,13 @@ void draw_main_screen(LovyanGFX &g, const State &s, const Config &c) {
   // An alarm outranks everything; a link fault outranks the generic pump
   // banner, because when the link is down that banner is as stale as the
   // reading and saying so is more use than repeating it.
+  //
+  // One exception: with no reading but the pump in touch with the phone, the
+  // pump's own banner (DELIVERY SUSPEND when it is disconnected, for one)
+  // outranks "No sensor data". It is current - the pump just sent it - and it
+  // is the reason there is no reading, which "No sensor data" only restates.
   char banner_buf[110];
+  const bool pump_says_why = s.link == LINK_NO_SENSOR && s.banner[0] && s.pumpInRange == 1;
   if (s.alarm_text[0]) {
     if (s.alarm_local) {
       // For a genuine alarm (not the generic banner, which carries no
@@ -302,6 +321,8 @@ void draw_main_screen(LovyanGFX &g, const State &s, const Config &c) {
     } else {
       snprintf(banner_buf, sizeof(banner_buf), "%s", s.alarm_text);
     }
+  } else if (pump_says_why) {
+    snprintf(banner_buf, sizeof(banner_buf), "%s", s.banner);
   } else if (s.link == LINK_NO_SENSOR && reading_age_s(s) >= 0) {
     // With its age: "No sensor data" is not proof the proxy is fetching NOW.
     // A proxy stuck during a sensor gap would show it forever; the age keeps
@@ -496,7 +517,7 @@ void draw_main_screen(LovyanGFX &g, const State &s, const Config &c) {
 // and a caregiver glancing over should recognise that view instantly rather
 // than read a label to find out which screen is up.
 static int draw_screen_header(LovyanGFX &g, const char *title) {
-  draw_text(g, title, MARGIN, 4, FONT_LABEL, COLOR_BLACK);
+  draw_text_bold(g, title, MARGIN, 4, FONT_LABEL, COLOR_BLACK);
   int y = 4 + font_height(g, FONT_LABEL) + 3;
   g.drawLine(MARGIN, y, PANEL_W - MARGIN, y, COLOR_BLACK);
   return y + 7;
@@ -612,7 +633,7 @@ void draw_trend_screen(LovyanGFX &g, const State &s, const Config &c) {
   int top = draw_screen_header(g, "LAST 3 HOURS");
   // Header's right side: the unit, so the scale's bare numbers mean something.
   int uw = text_width(g, "mg/dL", FONT_LABEL);
-  draw_text(g, "mg/dL", PANEL_W - MARGIN - uw, 4, FONT_LABEL, COLOR_BLACK);
+  draw_text_bold(g, "mg/dL", PANEL_W - MARGIN - uw - 1, 4, FONT_LABEL, COLOR_BLACK);
 
   const int label_h = font_height(g, FONT_LABEL);
   const int label_w = text_width(g, "180", FONT_LABEL);
@@ -665,7 +686,7 @@ void draw_trend_screen(LovyanGFX &g, const State &s, const Config &c) {
     for (int x = x0; x <= x1; x += 6) g.drawFastHLine(x, y, 3, COLOR_BLACK);
     char lab[8];
     snprintf(lab, sizeof(lab), "%d", v);
-    draw_text(g, lab, x1 + 4, y - label_h / 2, FONT_LABEL, COLOR_BLACK);
+    draw_text_bold(g, lab, x1 + 4, y - label_h / 2, FONT_LABEL, COLOR_BLACK);
   }
   // The target, always: a finer dotted line than the thresholds' dashes, so
   // it reads as a reference rather than a limit. Its label is left out when
@@ -676,7 +697,7 @@ void draw_trend_screen(LovyanGFX &g, const State &s, const Config &c) {
     if (ymap(HYPO_THRESHOLD_MGDL) - y >= label_h) {
       char lab[8];
       snprintf(lab, sizeof(lab), "%d", TARGET_MGDL);
-      draw_text(g, lab, x1 + 4, y - label_h / 2, FONT_LABEL, COLOR_BLACK);
+      draw_text_bold(g, lab, x1 + 4, y - label_h / 2, FONT_LABEL, COLOR_BLACK);
     }
   }
   // The top of the scale, labelled only above the narrowest scale's 200:
@@ -685,7 +706,7 @@ void draw_trend_screen(LovyanGFX &g, const State &s, const Config &c) {
   if (ymax > TREND_Y_TOP_PLAIN && ymap(HYPER_THRESHOLD_MGDL) - y0 >= label_h + 2) {
     char lab[8];
     snprintf(lab, sizeof(lab), "%d", ymax);
-    draw_text(g, lab, x1 + 4, y0, FONT_LABEL, COLOR_BLACK);
+    draw_text_bold(g, lab, x1 + 4, y0, FONT_LABEL, COLOR_BLACK);
     for (int x = x0; x <= x1; x += 12) g.drawPixel(x, y0, COLOR_BLACK);
   }
   g.drawFastHLine(x0, y1, x1 - x0 + 1, COLOR_BLACK);
@@ -707,7 +728,7 @@ void draw_trend_screen(LovyanGFX &g, const State &s, const Config &c) {
       int lx = x - w / 2;
       if (lx < 0) lx = 0;
       if (lx + w > x1) lx = x1 - w;
-      draw_text(g, lab, lx, y1 + 5, FONT_LABEL, COLOR_BLACK);
+      draw_text_bold(g, lab, lx, y1 + 5, FONT_LABEL, COLOR_BLACK);
     }
   }
 

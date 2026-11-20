@@ -146,6 +146,9 @@ function parse(doc) {
   if (typeof sys === "string" && sys && sys !== "NO_ERROR_MESSAGE") banner = sys;
   const pb = get(doc, "pumpBannerState");
   if (Array.isArray(pb) && pb[0] && pb[0].type) banner = String(pb[0].type);
+  // Plain words for the one banner that reads like a fault code; the display
+  // and the desktop monitor do the same.
+  if (banner === "DELIVERY_SUSPEND") banner = "Pump suspended";
   s.banner = banner.replace(/_/g, " ");
   return s;
 }
@@ -265,6 +268,11 @@ function banner() {
   const a = alarm();
   if (a) return [a.text + " (" + hhmm(a.at) + ")", "alarm"];
   const ag = age();
+  // With no reading but the pump in touch with the phone, the pump's own
+  // banner (DELIVERY SUSPEND when it is disconnected) says why; it outranks
+  // "No sensor data", which only restates it.
+  const s = model.state;
+  if (model.link === LINK.NO_SENSOR && s && s.banner && s.pumpInRange === true) return [s.banner, "pump"];
   if (model.link === LINK.NO_SENSOR && ag !== null) return [LINK_TEXT[model.link] + " (" + ageText(ag) + ")", "link"];
   if (model.link !== LINK.OK) return [LINK_TEXT[model.link], "link"];
   if (ag !== null && ag >= STALE_READING_S) return ["No new reading for " + ageText(ag), "stale"];

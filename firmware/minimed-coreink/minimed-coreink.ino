@@ -766,6 +766,10 @@ static bool fetch_pump_data(const Config &c, State &s) {
   if (pump_banner[0]) {
     strlcpy(s.banner, pump_banner, sizeof(s.banner));
   }
+  // The one pump banner with plain words of our own: the pump's
+  // DELIVERY_SUSPEND reads as a fault code to a caregiver. Others pass
+  // through as the pump says them. desktop/ and proxy/display/ do the same.
+  if (!strcmp(s.banner, "DELIVERY_SUSPEND")) strlcpy(s.banner, "Pump suspended", sizeof(s.banner));
   for (char *p = s.banner; *p; p++) if (*p == '_') *p = ' ';
 
   // After sg, because the glucose-recovered checks need it.

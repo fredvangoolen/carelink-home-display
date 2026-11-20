@@ -282,6 +282,10 @@ def parse(doc):
     banners = get(doc, "pumpBannerState", default=[])
     if isinstance(banners, list) and banners and isinstance(banners[0], dict) and banners[0].get("type"):
         banner = str(banners[0]["type"])
+    # Plain words for the one banner that reads like a fault code; the display
+    # and the page do the same.
+    if banner == "DELIVERY_SUSPEND":
+        banner = "Pump suspended"
     s["banner"] = banner.replace("_", " ")
 
     s["lastAlarm"] = get(doc, "lastAlarm")
@@ -424,6 +428,12 @@ class Model:
         if a:
             return "%s (%s)" % (a[0], time.strftime("%H:%M", time.localtime(a[1]))), "alarm"
         age = self.age()
+        # With no reading but the pump in touch with the phone, the pump's own
+        # banner (DELIVERY SUSPEND when it is disconnected) says why; it
+        # outranks "No sensor data", which only restates it.
+        if (self.link == LINK_NO_SENSOR and self.state and self.state["banner"]
+                and self.state["pumpInRange"] is True):
+            return self.state["banner"], "pump"
         if self.link == LINK_NO_SENSOR and age is not None:
             # With its age: "no sensor data" is not proof the proxy is
             # fetching now. Minutes read as routine, hours do not.
