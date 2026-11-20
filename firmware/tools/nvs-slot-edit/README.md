@@ -3,6 +3,14 @@
 Change one WiFi slot on a configured Core Ink without the setup portal and
 without regenerating the NVS image.
 
+**Not the normal route.** To change a display's WiFi, set it up again: on
+*Device & Network* hold the side switch in for 5 seconds, choose *Yes*, scan
+the QR code with a phone and fill in the home WiFi and the proxy. No laptop,
+a few minutes, and plan B (slot 2) fills itself from the proxy. This tool is
+for development and support: a slot whose password nobody has at hand (slot 1
+survives a change to slot 0), a look at what is stored (`dump`), or switching
+a slot back and forth while testing.
+
 The alternatives both cost more. The portal needs the board wiped first and
 every setting retyped. An NVS image made with `nvs_partition_gen.py` and
 flashed at `0x9000` rewrites *every* key, so all WiFi passwords have to be in

@@ -71,7 +71,8 @@ Change both or neither.
 - Pi side — the hotspots, their firewalls, the passwords and the label:
   [`appliance/README.md`](../appliance/README.md), "Fallback setup hotspot",
   "WiFi watchdog" and "Display fallback hotspot".
-- Changing one WiFi slot on a display without redoing its setup:
-  [`firmware/tools/nvs-slot-edit/`](../firmware/tools/nvs-slot-edit/).
+- Changing one WiFi slot on a display without redoing its setup, a
+  development and support tool (setting the display up again is the normal
+  route): [`firmware/tools/nvs-slot-edit/`](../firmware/tools/nvs-slot-edit/).
 - What was measured, and what has not been tested yet:
   [testing.md](testing.md).

@@ -16,7 +16,7 @@ proxy's address ([docs/staging-setup.md](../docs/staging-setup.md)).
 | Directory | What |
 |---|---|
 | [`minimed-coreink/`](minimed-coreink/) | the firmware itself: build instructions, measured timings, hardware quirks |
-| [`tools/nvs-slot-edit/`](tools/nvs-slot-edit/) | a one-shot sketch to change one WiFi slot without redoing the setup |
+| [`tools/nvs-slot-edit/`](tools/nvs-slot-edit/) | a one-shot sketch to change one WiFi slot without redoing the setup; for development and support, the setup page is the normal route |
 
 Building it yourself with `arduino-cli` is only needed to change the
 firmware: [`minimed-coreink/README.md`](minimed-coreink/README.md).
