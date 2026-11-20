@@ -92,6 +92,14 @@ together; changed to hours only and reflashed, checked on the panel.
 `get_trend_data()` was checked on a saved day of CareLink data and on empty
 input (no `patientData`, no `sgs`, only zeros: all 404).
 
+The desktop monitor and the display page draw the same chart, 2026-11-20:
+the monitor against carelink-piet (`--check` prints the trend line), the
+page in headless Chrome under the proxy's CSP (no violations) with live data,
+and with a made-up trend for what live data did not show: gaps break the
+line, a lone reading is a small dot, 350 and 360 sit on the top edge, and a
+trend ending 40 minutes ago stops that far short of now. Not yet seen in a
+phone browser, or on Windows and macOS.
+
 Not yet seen: the trend across a DST change (expected: an hour's gap or
 overlap for three hours), a sensor gap on the panel (the line should break),
 a reading above 300 (pinned to the top), and a display against a proxy

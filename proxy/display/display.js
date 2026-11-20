@@ -21,6 +21,13 @@ const ALARM_REPEAT_S = 5 * 60;
 const HYPO_MGDL = 70;
 const HYPER_MGDL = 180;
 const NEED_LOGIN_MARKER = "Valid token required";
+// The trend: /carelink/trend, 36 readings 5 minutes apart. The display's
+// window and scale: it ends NOW, so a line that stops short means no
+// readings since; readings above the top are pinned to it.
+const TREND_SLOTS = 36;
+const TREND_STEP_S = 300;
+const TREND_Y_MIN = 40;
+const TREND_Y_MAX = 300;
 
 const LINK = { OK: 0, NO_SENSOR: 1, PROXY_NO_DATA: 2, PROXY_LOGIN: 3, NO_PROXY: 4 };
 const LINK_TEXT = ["", "No sensor data", "Proxy has no data", "CareLink login needed", "No link to proxy"];
@@ -34,7 +41,7 @@ const $ = (id) => document.getElementById(id);
 
 const model = {
   state: null, link: LINK.OK, failStreak: 0, skew: 0, lastGoodSg: 0,
-  lastPoll: null, answer: "-", raw: "",
+  lastPoll: null, answer: "-", raw: "", trend: null,
 };
 let audio = null, alarmKey = null, alarmSounded = 0, pollTimer = null, polling = false, rawShown = null;
 
@@ -158,6 +165,22 @@ async function proxyWantsLogin() {
   }
 }
 
+// /carelink/trend -> {end: epoch, sg: [36]} or null. "end" is local wall
+// clock like lastAlarm.dateTime, read the same way (parseLocal).
+async function fetchTrend() {
+  try {
+    const r = await fetchWithTimeout("/carelink/trend");
+    if (!r.ok) return null;
+    const doc = await r.json();
+    const end = parseLocal(doc && doc.end);
+    if (!doc || doc.step !== TREND_STEP_S || !Array.isArray(doc.sg) || doc.sg.length !== TREND_SLOTS || !end)
+      return null;
+    return { end, sg: doc.sg.map((v) => (isNum(v) && v > 0 ? Math.round(v) : 0)) };
+  } catch (e) {
+    return null;
+  }
+}
+
 async function poll() {
   if (polling) return;          // a tab returning mid-poll must not start a second chain
   polling = true;
@@ -204,6 +227,10 @@ async function pollOnce() {
       model.state = parse(doc);
       model.link = model.state.sg > 0 ? LINK.OK : LINK.NO_SENSOR;
       if (model.state.sg > 0) model.lastGoodSg = model.state.sg;
+      // Kept across a failed fetch, like the display: one miss must not
+      // blank the chart, and the window's own end keeps it honest.
+      const t = await fetchTrend();
+      if (t) model.trend = t;
     }
   }
   draw();
@@ -276,6 +303,8 @@ function draw() {
   const la = s && s.lastAlarm;
   setText("d-alarm", la ? (la.faultId + " " + faultText(String(la.faultId)) + ", " + la.type + ", " + la.dateTime) : "-");
   setText("d-link", LINK_NAME[model.link]);
+  const tr = model.trend;
+  setText("d-trend", tr ? tr.sg.filter((v) => v).length + " readings, newest " + hhmm(tr.end) : "none");
   if ($("debug").open && rawShown !== model.raw) {   // only on change: keeps the scroll position
     rawShown = model.raw;
     let pretty = model.raw;
@@ -283,7 +312,64 @@ function draw() {
     setText("raw", pretty);
   }
 
+  drawTrend();
   maybeSound();
+}
+
+// The chart is SVG built with createElementNS and textContent: no markup
+// from a string, as the CSP and the rest of this page require.
+const SVG_NS = "http://www.w3.org/2000/svg";
+function svg(parent, name, attrs, text) {
+  const e = document.createElementNS(SVG_NS, name);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text !== undefined) e.textContent = text;
+  parent.appendChild(e);
+  return e;
+}
+
+function drawTrend() {
+  const c = $("chart");
+  c.replaceChildren();
+  const W = 600, H = 240, x0 = 0, x1 = W - 44, y0 = 6, y1 = H - 28;
+  const ym = (v) => y1 - (Math.min(Math.max(v, TREND_Y_MIN), TREND_Y_MAX) - TREND_Y_MIN) * (y1 - y0) / (TREND_Y_MAX - TREND_Y_MIN);
+  svg(c, "rect", { class: "band", x: x0, y: ym(HYPER_MGDL), width: x1 - x0, height: ym(HYPO_MGDL) - ym(HYPER_MGDL) });
+  for (const [v, cls] of [[HYPO_MGDL, "lo"], [HYPER_MGDL, "hi"]]) {
+    svg(c, "line", { class: cls, x1: x0, x2: x1, y1: ym(v), y2: ym(v) });
+    svg(c, "text", { x: x1 + 6, y: ym(v) + 5 }, String(v));
+  }
+  svg(c, "line", { class: "axis", x1: x0, x2: x1, y1: y1, y2: y1 });
+
+  const wend = now(), wstart = wend - TREND_SLOTS * TREND_STEP_S;
+  const xm = (t) => x0 + (t - wstart) * (x1 - x0) / (wend - wstart);
+  for (let h = (Math.floor(wstart / 3600) + 1) * 3600; h <= wend; h += 3600) {
+    svg(c, "line", { class: "axis", x1: xm(h), x2: xm(h), y1: y1, y2: y1 + 5 });
+    svg(c, "text", { x: xm(h), y: y1 + 22, "text-anchor": "middle" },
+        String(new Date(h * 1000).getHours()).padStart(2, "0"));
+  }
+
+  // Broken wherever a slot has no reading; a lone reading is a dot. The big
+  // dot marks the newest slot only when it has a reading, as on the display.
+  const t = model.trend;
+  let seg = [], last = null, drawn = 0;
+  const flush = () => {
+    if (seg.length > 1) svg(c, "polyline", { class: "line", points: seg.join(" ") });
+    else if (seg.length === 1) { const [x, y] = seg[0].split(","); svg(c, "circle", { class: "pt", cx: x, cy: y, r: 2.5 }); }
+    seg = [];
+  };
+  if (t) {
+    t.sg.forEach((v, i) => {
+      const at = t.end - (TREND_SLOTS - 1 - i) * TREND_STEP_S;
+      if (!v || at < wstart || at > wend) { flush(); last = null; return; }
+      last = [xm(at), ym(v)];
+      seg.push(last[0].toFixed(1) + "," + last[1].toFixed(1));
+      drawn++;
+    });
+    flush();
+  }
+  if (last) svg(c, "circle", { class: "dot", cx: last[0], cy: last[1], r: 6 });
+  if (!drawn)
+    svg(c, "text", { x: (x0 + x1) / 2, y: (y0 + y1) / 2, "text-anchor": "middle" },
+        t ? "No readings in 3 h" : "No trend from proxy");
 }
 
 // ------------------------------------------------------------ sound

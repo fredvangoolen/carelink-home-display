@@ -28,6 +28,16 @@ main { max-width: 640px; margin: 0 auto; padding: 16px; }
 .v { font-size: 1.1rem; }
 @media (max-width: 420px) { .kv { grid-template-columns: repeat(2, 1fr); } }
 
+#chart { display: block; width: 100%; height: auto; margin-top: 16px; }
+#chart .band { fill: #17301f; }
+#chart .lo { stroke: var(--low); stroke-dasharray: 6 4; }
+#chart .hi { stroke: var(--high); stroke-dasharray: 6 4; }
+#chart .axis { stroke: var(--dim); }
+#chart .line { fill: none; stroke: var(--fg); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+#chart .pt { fill: var(--fg); }
+#chart .dot { fill: var(--fg); stroke: var(--bg); stroke-width: 3; }
+#chart text { fill: var(--dim); font-size: 16px; }
+
 #stats { color: var(--dim); font-size: .85rem; margin-top: 16px; min-height: 1em; }
 .updated-row { margin-top: 4px; font-size: 1.05rem; }
 

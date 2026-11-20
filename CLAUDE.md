@@ -31,7 +31,9 @@ JSON shape is a breaking change for the other side — change both or neither.
 - `GET /carelink/trend` — the last 3 hours for the trend screen:
   `{"end": "<local timestamp>", "step": 300, "sg": [36 values, oldest first,
   0 = none]}`, or 404. `end` is local wall clock, read like
-  `lastAlarm.dateTime`. Only the firmware reads it so far.
+  `lastAlarm.dateTime`. All three frontends draw it the same way: the
+  window ends now, 40-300 mg/dL, a gap breaks the line, hours only on the
+  axis, a failed fetch keeps the previous trend.
 - `GET /carelink/fallback` — `{"ssid": ..., "psk": ...}` for the Pi's travel
   hotspot, or 404. The display stores it in WiFi slot 2.
 

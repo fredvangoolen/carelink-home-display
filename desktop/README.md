@@ -1,6 +1,6 @@
 # Desktop monitor
 
-The display's *Glucose* screen in a window on an ordinary computer: Windows,
+The display's *Glucose* and *Trend* screens in one window on an ordinary computer: Windows,
 macOS or Linux. It reads the same proxy as the Core Ink display, so it needs
 the box (the Pi) on the same network.
 
@@ -8,7 +8,7 @@ Use it as a backup when there is no display at hand, a second screen on the
 patient's own desk, or a debugging aid: it shows exactly what the proxy
 serves, and how it reads it.
 
-![The window: reading, trend, banner, pump values and how old the reading is](../docs/img/desktop-monitor.png)
+![The window: reading, trend arrow, pump values, the last 3 hours as a line, and how old the reading is](../docs/img/desktop-monitor.png)
 
 It is not a medical device and not an alarm system. A computer that sleeps,
 or a window that is closed, shows nothing and sounds nothing.

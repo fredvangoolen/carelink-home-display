@@ -23,6 +23,8 @@
     <div><span class="k">Sensor</span><span class="v" id="sensor">--</span></div>
   </section>
 
+  <svg id="chart" viewBox="0 0 600 240" role="img" aria-label="Glucose, last 3 hours"></svg>
+
   <div id="stats"></div>
   <div class="updated-row"><span id="updated">Updated: no data</span><span id="clock">--:--</span></div>
 
@@ -44,6 +46,7 @@
       <tr><th>Reading time</th><td id="d-reading">-</td></tr>
       <tr><th>Last alarm</th><td id="d-alarm">-</td></tr>
       <tr><th>Link state</th><td id="d-link">-</td></tr>
+      <tr><th>Trend</th><td id="d-trend">-</td></tr>
     </table>
     <p><button id="refresh" type="button">Refresh now</button> <a href="/carelink/nohistory">raw JSON</a> &middot; <a href="/">proxy status</a></p>
     <pre id="raw"></pre>

@@ -69,6 +69,15 @@ HYPO_MGDL = 70
 HYPER_MGDL = 180
 NEED_LOGIN_MARKER = "Valid token required"   # the proxy's own status string
 
+# The trend: the proxy's /carelink/trend, 36 readings 5 minutes apart. The
+# same window and scale as the display's trend screen: it ends NOW, so a line
+# that stops short means no readings since; readings above the top are
+# pinned to it.
+TREND_SLOTS = 36
+TREND_STEP_S = 300
+TREND_Y_MIN = 40
+TREND_Y_MAX = 300
+
 LINK_OK, LINK_NO_SENSOR, LINK_PROXY_NO_DATA, LINK_PROXY_LOGIN, LINK_NO_PROXY = range(5)
 LINK_TEXT = {
     LINK_NO_SENSOR: "No sensor data",
@@ -270,15 +279,38 @@ def parse(doc):
     return s
 
 
+def parse_trend(body):
+    """/carelink/trend's answer -> {"end": epoch, "sg": [36 ints]} or None.
+
+    "end" is local wall clock like lastAlarm.dateTime, read the same way."""
+    try:
+        doc = json.loads(body)
+    except ValueError:
+        return None
+    if not isinstance(doc, dict) or doc.get("step") != TREND_STEP_S:
+        return None
+    sgs = doc.get("sg")
+    end = parse_local(doc.get("end"))
+    if not isinstance(sgs, list) or len(sgs) != TREND_SLOTS or not end:
+        return None
+    return {"end": end, "sg": [int(v) if num(v, 0) > 0 else 0 for v in sgs]}
+
+
+def fetch_trend(proxy):
+    """The trend, or None when the proxy has none (404: none yet, or too old)."""
+    r = http_get(proxy, "carelink/trend")
+    return parse_trend(r.body) if r.status == 200 else None
+
+
 def poll(proxy, source_file=None):
-    """One fetch. Returns (link, state-or-None, reply, raw text)."""
+    """One fetch. Returns (link, state-or-None, reply, raw text, trend-or-None)."""
     if source_file:
         with open(source_file, "rb") as f:
             reply = Reply(status=200, body=f.read())
     else:
         reply = http_get(proxy, "carelink/nohistory")
     if reply.status != 200:
-        return LINK_NO_PROXY, None, reply, ""
+        return LINK_NO_PROXY, None, reply, "", None
     raw = reply.body.decode("utf-8", "replace")
     try:
         doc = json.loads(raw)
@@ -290,9 +322,10 @@ def poll(proxy, source_file=None):
     # proxy can no longer stand behind.
     if not isinstance(doc, dict):
         link = LINK_PROXY_LOGIN if (not source_file and proxy_wants_login(proxy)) else LINK_PROXY_NO_DATA
-        return link, None, reply, raw
+        return link, None, reply, raw, None
     s = parse(doc)
-    return (LINK_OK if s["sg"] > 0 else LINK_NO_SENSOR), s, reply, raw
+    trend = None if source_file else fetch_trend(proxy)
+    return (LINK_OK if s["sg"] > 0 else LINK_NO_SENSOR), s, reply, raw, trend
 
 
 # ----------------------------------------------------------------- the view
@@ -329,13 +362,14 @@ class Model:
         self.last_poll = None      # local time of the last poll, for the status line
         self.raw = ""
         self.reply = None
+        self.trend = None          # last good /carelink/trend, kept across a failed fetch
 
     def now(self):
         # The proxy's clock, not this computer's: a PC that is minutes off
         # would otherwise misjudge the reading's age and every alarm window.
         return time.time() + self.skew
 
-    def apply(self, link, state, reply, raw):
+    def apply(self, link, state, reply, raw, trend=None):
         self.last_poll = time.time()
         self.reply = reply
         if reply.server_epoch:
@@ -353,6 +387,8 @@ class Model:
         self.state = state
         if state and state["sg"] > 0:
             self.last_good_sg = state["sg"]
+        if trend:
+            self.trend = trend
 
     def age(self):
         if not self.state or not self.state["lastUpdate"]:
@@ -404,6 +440,10 @@ class Model:
                             "%.0f" % s["reservoir"] if s["reservoir"] is not None else "--",
                             sensor_text(s) or "--"))
             lines.append("comms     pump-phone %s, phone-cloud %s" % (s["pumpInRange"], s["phoneInRange"]))
+        t = self.trend
+        lines.append("trend     %s" % ("%d readings, newest %s" % (
+            sum(1 for v in t["sg"] if v), time.strftime("%H:%M", time.localtime(t["end"])))
+            if t else "none"))
         lines.append("clock     proxy is %+.0f s from this computer" % self.skew)
         return "\n".join(lines)
 
@@ -489,6 +529,7 @@ COLORS = {
     "bg": "#101418", "fg": "#ffffff", "dim": "#9aa4ad",
     "low": "#d32f2f", "high": "#f9a825", "high_fg": "#101418",
     "alarm": "#d32f2f", "link": "#ef6c00", "stale": "#ef6c00", "pump": "#37474f",
+    "band": "#17301f",     # 70-180 behind the trend line
 }
 
 
@@ -509,8 +550,8 @@ class Window:
         self.root = root = tk.Tk(className="carelink-monitor")
         root.title("CareLink monitor")
         root.configure(bg=COLORS["bg"])
-        root.minsize(420, 300)
-        root.geometry("520x340")
+        root.minsize(420, 500)
+        root.geometry("520x600")
         self.sound = Sound(root)
 
         family = "Segoe UI" if sys.platform == "win32" else ("Helvetica Neue" if sys.platform == "darwin" else "DejaVu Sans")
@@ -565,6 +606,11 @@ class Window:
         self.updated.pack(side="left")
         self.clock = tk.Label(row, text="--:--", font=self.font_text, bg=bg, fg=fg)
         self.clock.pack(side="right")
+
+        # The last 3 hours, between the values and the bottom rows; it takes
+        # whatever height the window gives it.
+        self.chart = tk.Canvas(root, bg=bg, highlightthickness=0, height=220)
+        self.chart.pack(fill="both", expand=True, padx=16, pady=(12, 6))
 
         threading.Thread(target=self._poller, daemon=True).start()
         root.after(200, self._tick)
@@ -657,7 +703,7 @@ class Window:
                 try:
                     result = poll(proxy, self.args.file)
                 except Exception as e:   # never let the poller die silently
-                    result = (LINK_NO_PROXY, None, Reply(error="internal: %s" % e), "")
+                    result = (LINK_NO_PROXY, None, Reply(error="internal: %s" % e), "", None)
                 self.results.put(result)
             self.wake.wait(POLL_S)
             self.wake.clear()
@@ -665,8 +711,8 @@ class Window:
     def _tick(self):
         try:
             while True:
-                link, state, reply, raw = self.results.get_nowait()
-                self.model.apply(link, state, reply, raw)
+                link, state, reply, raw, trend = self.results.get_nowait()
+                self.model.apply(link, state, reply, raw, trend)
                 log("poll: link=%d status=%s %s" % (link, reply.status, reply.error))
                 if DEBUG:
                     log(self.model.summary())
@@ -731,6 +777,66 @@ class Window:
         else:
             self.updated.configure(text="Updated now" if age < 60 else "Updated %s ago" % age_text(age))
         self.clock.configure(text=time.strftime("%H:%M", time.localtime(m.now())))
+        self._draw_trend()
+
+    def _draw_trend(self):
+        c, C, m = self.chart, COLORS, self.model
+        c.delete("all")
+        w, h = c.winfo_width(), c.winfo_height()
+        if w < 100 or h < 60:
+            return
+        lw = self.font_small.measure("180") + 6
+        lh = self.font_small.metrics("linespace")
+        x0, x1, y0, y1 = 0, w - lw - 2, 4, h - lh - 6
+
+        def ym(v):
+            v = min(max(v, TREND_Y_MIN), TREND_Y_MAX)
+            return y1 - (v - TREND_Y_MIN) * (y1 - y0) / (TREND_Y_MAX - TREND_Y_MIN)
+
+        c.create_rectangle(x0, ym(HYPER_MGDL), x1, ym(HYPO_MGDL), fill=C["band"], width=0)
+        for v, col in ((HYPO_MGDL, C["low"]), (HYPER_MGDL, C["high"])):
+            c.create_line(x0, ym(v), x1, ym(v), fill=col, dash=(4, 3))
+            c.create_text(x1 + 6, ym(v), text=str(v), anchor="w", fill=C["dim"], font=self.font_small)
+        c.create_line(x0, y1, x1, y1, fill=C["dim"])
+
+        wend = m.now()
+        wstart = wend - TREND_SLOTS * TREND_STEP_S
+        xm = lambda t: x0 + (t - wstart) * (x1 - x0) / (wend - wstart)
+        hour = (int(wstart) // 3600 + 1) * 3600
+        while hour <= wend:
+            x = xm(hour)
+            c.create_line(x, y1, x, y1 + 4, fill=C["dim"])
+            c.create_text(x, y1 + 5, text=time.strftime("%H", time.localtime(hour)),
+                          anchor="n", fill=C["dim"], font=self.font_small)
+            hour += 3600
+
+        def flush(seg):
+            # Broken wherever a slot has no reading; a lone reading is a dot.
+            if len(seg) >= 4:
+                c.create_line(*seg, fill=C["fg"], width=3, capstyle="round", joinstyle="round")
+            elif len(seg) == 2:
+                c.create_oval(seg[0] - 2, seg[1] - 2, seg[0] + 2, seg[1] + 2, fill=C["fg"], width=0)
+
+        # The dot marks the newest slot only when it has a reading, as on the
+        # display; the message only when nothing at all was drawn.
+        t, seg, last, drawn = m.trend, [], None, 0
+        if t:
+            for i, v in enumerate(t["sg"]):
+                at = t["end"] - (TREND_SLOTS - 1 - i) * TREND_STEP_S
+                if not v or at < wstart or at > wend:
+                    flush(seg)
+                    seg, last = [], None
+                    continue
+                last = (xm(at), ym(v))
+                seg += last
+                drawn += 1
+            flush(seg)
+        if last:
+            c.create_oval(last[0] - 5, last[1] - 5, last[0] + 5, last[1] + 5,
+                          fill=C["fg"], outline=C["bg"], width=2)
+        if not drawn:
+            c.create_text((x0 + x1) / 2, (y0 + y1) / 2, fill=C["dim"], font=self.font_small,
+                          text="No readings in 3 h" if t else "No trend from proxy")
 
     def run(self):
         if not self.cfg.get("proxy") and not self.args.file:
@@ -759,10 +865,10 @@ def main():
     if args.check:
         if not cfg.get("proxy") and not args.file:
             sys.exit("no proxy known: pass --proxy")
-        link, state, reply, raw = poll(cfg.get("proxy"), args.file)
+        link, state, reply, raw, trend = poll(cfg.get("proxy"), args.file)
         m = Model()
         m.fail_streak = FAIL_STREAK_SHOWN - 1   # one try is all --check gets
-        m.apply(link, state, reply, raw)
+        m.apply(link, state, reply, raw, trend)
         print("proxy     %s (%s)" % (args.file or cfg["proxy"],
                                      "status %d" % reply.status if reply.status else reply.error))
         print(m.summary())
