@@ -14,7 +14,7 @@ people who care for a Type-1 diabetes patient. Three programs, one project:
 | `desktop/` | the display's main screen in a window, for a caregiver's computer and for debugging; stdlib Python + Tk | Windows, macOS, Linux | GPL-3.0 |
 | `proxy/` | holds the CareLink login, polls CareLink Cloud, re-serves the data on port 8081 | Raspberry Pi | AGPL-3.0 |
 | `appliance/` | `provision.sh` and friends: turns a stock Pi into the proxy, with browser token renewal and the travel hotspots | Raspberry Pi | AGPL-3.0 |
-| `docs/` | markdown only | | |
+| `docs/` | markdown, plus drawings in `img/` and the one-page handout in `handout/` (HTML source and its PDF) | | |
 
 This is a medical-adjacent device in daily use. Timestamps, DST and alarm
 handling have each produced silent, plausible-looking wrong answers before;

@@ -57,6 +57,9 @@ proxy settings (choose *do not erase*). The page always carries the
   and what a household needs, what preparing it takes, and the display's
   screens and messages. Start here if you are not technical. In Dutch:
   [docs/handleiding.md](docs/handleiding.md).
+- One-page handout for an event or a first conversation, as an A4 PDF:
+  [English](docs/handout/carelink-handout-en.pdf),
+  [Dutch](docs/handout/carelink-handout-nl.pdf).
 - [docs/runbook.md](docs/runbook.md) — staging, delivering and supporting a
   set, with the security model and its known gaps; and
   [docs/home-installation-checklist.md](docs/home-installation-checklist.md),
