@@ -190,7 +190,7 @@ woorden; hieronder staat wat ze betekenen.
 | Scherm | Toont |
 |---|---|
 | **Glucose** | de laatste meting, de trendpijl, de actieve insuline (*Act. insulin*), en hoe lang geleden de meting is (*Updated … ago*). Alarmen van de pomp verschijnen hier, met een piep |
-| **Trend** | de laatste 3 uur als lijn (*Last 3 hours*), met stippellijnen bij 70 en 180 en de uren onderaan. Op het scherm zijn de zones onder 70 en boven 180 gestippeld; de lege band ertussen is binnen bereik. De schaal past zich aan de metingen aan; gaat een piek boven 200, dan staat rechtsboven tot hoe hoog. De stip is de laatste meting; stopt de lijn voor de rechterrand, dan kwamen er sindsdien geen metingen binnen |
+| **Trend** | de laatste 3 uur als lijn (*Last 3 hours*), met streepjeslijnen bij 70 en 180, een fijne stippellijn bij 100 (het streefdoel van de pomp), en de uren onderaan. Op het scherm zijn de zones onder 70 en boven 180 gestippeld; de lege band ertussen is binnen bereik. De schaal past zich aan de metingen aan; gaat een piek boven 200, dan staat rechtsboven tot hoe hoog. De stip is de laatste meting; stopt de lijn voor de rechterrand, dan kwamen er sindsdien geen metingen binnen |
 | **Statistiek** | de laatste 24 uur: tijd binnen bereik (*In range*), erboven (*Above*), eronder (*Below*), en het gemiddelde (*Average*) |
 | **Pomp** | het reservoir, de batterij van de pomp, en hoe lang de sensor al zit |
 | **Device & Network** | de wifi die het scherm gebruikt en hoe goed het signaal is, en de batterij van het scherm zelf. Je helper kan je vragen dit scherm voor te lezen |

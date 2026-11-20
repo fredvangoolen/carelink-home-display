@@ -34,7 +34,8 @@ JSON shape is a breaking change for the other side — change both or neither.
   `lastAlarm.dateTime`. All three frontends draw it the same way: the
   window ends now; the scale follows the readings but always shows 70 and
   180 (at least 60-200, within 40-400, ends rounded to 20; the top labelled
-  only above 200); a gap breaks the line; hours only on the axis; a failed
+  only above 200); a finer line at 100, the pump's target, always; a gap
+  breaks the line; hours only on the axis; a failed
   fetch keeps the previous trend.
 - `GET /carelink/fallback` — `{"ssid": ..., "psk": ...}` for the Pi's travel
   hotspot, or 404. The display stores it in WiFi slot 2.

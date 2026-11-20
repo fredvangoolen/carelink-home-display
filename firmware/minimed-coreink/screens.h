@@ -12,7 +12,7 @@
 
 // Shown on the info screen; kept here so both the screen and the sketch
 // agree on one string.
-#define VERSION_STR "0.3-arduino"
+#define VERSION_STR "0.4-arduino"
 
 static const int PANEL_W = 200;
 static const int PANEL_H = 200;
@@ -43,6 +43,9 @@ static const uint32_t COLOR_WHITE = 0xFFFFFFu;
 // same two values.
 static const int HYPER_THRESHOLD_MGDL = 180;
 static const int HYPO_THRESHOLD_MGDL  = 70;
+// The glucose target the pump steers to (the 780G's own default, 100). Only
+// drawn, as a reference line on the trend screen; no rule depends on it.
+static const int TARGET_MGDL          = 100;
 
 // Fill steps for the battery symbol on the main screen. Three states, not a
 // proportional bar: at a glance you want "fine / getting on / do something",

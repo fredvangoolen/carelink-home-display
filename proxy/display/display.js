@@ -20,6 +20,7 @@ const ALARM_RECENCY_S = 15 * 60;
 const ALARM_REPEAT_S = 5 * 60;
 const HYPO_MGDL = 70;
 const HYPER_MGDL = 180;
+const TARGET_MGDL = 100;   // the pump's glucose target: a reference line on the trend, no rule uses it
 const NEED_LOGIN_MARKER = "Valid token required";
 // The trend: /carelink/trend, 36 readings 5 minutes apart. The display's
 // window and scale: it ends NOW, so a line that stops short means no
@@ -358,6 +359,11 @@ function drawTrend() {
     svg(c, "line", { class: cls, x1: x0, x2: x1, y1: ym(v), y2: ym(v) });
     svg(c, "text", { x: x1 + 6, y: ym(v) + 5 }, String(v));
   }
+  // The target, always, finer than the thresholds; its label only where it
+  // does not run into the 70's.
+  svg(c, "line", { class: "target", x1: x0, x2: x1, y1: ym(TARGET_MGDL), y2: ym(TARGET_MGDL) });
+  if (ym(HYPO_MGDL) - ym(TARGET_MGDL) >= 18)
+    svg(c, "text", { x: x1 + 6, y: ym(TARGET_MGDL) + 5 }, String(TARGET_MGDL));
   if (ymax > TREND_Y_TOP_PLAIN && ym(HYPER_MGDL) - y0 >= 20) {
     // The top of the scale, what a high peak is read against.
     svg(c, "line", { class: "top", x1: x0, x2: x1, y1: y0, y2: y0 });

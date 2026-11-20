@@ -67,6 +67,7 @@ ALARM_RECENCY_S = 15 * 60
 ALARM_REPEAT_S = 5 * 60  # the display's cadence: one beep per 5-minute cycle
 HYPO_MGDL = 70
 HYPER_MGDL = 180
+TARGET_MGDL = 100        # the pump's glucose target: a reference line on the trend, no rule uses it
 NEED_LOGIN_MARKER = "Valid token required"   # the proxy's own status string
 
 # The trend: the proxy's /carelink/trend, 36 readings 5 minutes apart. The
@@ -821,6 +822,11 @@ class Window:
         for v, col in ((HYPO_MGDL, C["low"]), (HYPER_MGDL, C["high"])):
             c.create_line(x0, ym(v), x1, ym(v), fill=col, dash=(4, 3))
             c.create_text(x1 + 6, ym(v), text=str(v), anchor="w", fill=C["dim"], font=self.font_small)
+        # The target, always, finer than the thresholds; its label only where
+        # it does not run into the 70's.
+        c.create_line(x0, ym(TARGET_MGDL), x1, ym(TARGET_MGDL), fill=C["dim"], dash=(1, 3))
+        if ym(HYPO_MGDL) - ym(TARGET_MGDL) >= lh:
+            c.create_text(x1 + 6, ym(TARGET_MGDL), text=str(TARGET_MGDL), anchor="w", fill=C["dim"], font=self.font_small)
         if ymax > TREND_Y_TOP_PLAIN and ym(HYPER_MGDL) - y0 >= lh + 2:
             # The top of the scale, what a high peak is read against.
             c.create_line(x0, y0, x1, y0, fill=C["dim"], dash=(1, 6))

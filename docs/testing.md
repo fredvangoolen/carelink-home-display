@@ -107,7 +107,9 @@ live data (60-200, the line about twice as tall) and with a made-up peak
 near 290 (top 300, labelled); on the desktop with made-up values. On the
 panel the `200` label of the narrowest scale came too close to 180 and was
 dropped: the top is labelled only above 200. The zone above 180 is now
-dotted like the one below 70. Checked on the panel with live data.
+dotted like the one below 70. Checked on the panel with live data. Then a finer dotted line at 100, the
+pump's target, on all three (its label left out where it would run into
+70's); seen on the page with live data, checked on the home board's panel.
 
 Not yet seen: the trend across a DST change (expected: an hour's gap or
 overlap for three hours), a sensor gap on the panel (the line should break),

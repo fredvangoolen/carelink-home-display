@@ -667,6 +667,18 @@ void draw_trend_screen(LovyanGFX &g, const State &s, const Config &c) {
     snprintf(lab, sizeof(lab), "%d", v);
     draw_text(g, lab, x1 + 4, y - label_h / 2, FONT_LABEL, COLOR_BLACK);
   }
+  // The target, always: a finer dotted line than the thresholds' dashes, so
+  // it reads as a reference rather than a limit. Its label is left out when
+  // the scale is so wide that it would run into the 70's.
+  {
+    int y = ymap(TARGET_MGDL);
+    for (int x = x0; x <= x1; x += 3) g.drawPixel(x, y, COLOR_BLACK);
+    if (ymap(HYPO_THRESHOLD_MGDL) - y >= label_h) {
+      char lab[8];
+      snprintf(lab, sizeof(lab), "%d", TARGET_MGDL);
+      draw_text(g, lab, x1 + 4, y - label_h / 2, FONT_LABEL, COLOR_BLACK);
+    }
+  }
   // The top of the scale, labelled only above the narrowest scale's 200:
   // there it would sit right on top of 180 and say nothing, while above it
   // it is what a high peak is read against.
