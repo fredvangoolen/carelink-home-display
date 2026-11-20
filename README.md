@@ -5,12 +5,12 @@ pump is doing, for the people who care for the person wearing it. It hangs in
 the house, wakes every five minutes, shows the current glucose reading, trend,
 active insulin and any pump alarm (with a beep), and goes back to sleep.
 
-<img src="docs/img/coreink.jpg" alt="M5Stack Core Ink showing a glucose reading, trend arrow and active insulin" width="300">
+<img src="docs/img/coreink-default.jpg" alt="M5Stack Core Ink showing a glucose reading of 96 mg/dL, a steady trend arrow, the battery symbol and 2.1 U active insulin" width="300">
 
-| Normal reading | No sensor data | No sensor data, 5 minutes on |
-|:---:|:---:|:---:|
-| <img src="docs/img/coreink-default.jpg" alt="Display showing 96 mg/dL with a steady trend arrow, 2.1 U active insulin, updated now" width="220"> | <img src="docs/img/coreink-no-sensor-data.jpg" alt="Display with dashes instead of a reading and the last good value, 104, in brackets" width="220"> | <img src="docs/img/coreink-no-sensor-data-5min.jpg" alt="Display with dashes, the last good value 133 in brackets, and a black banner: No sensor data (5 min)" width="220"> |
-| glucose, trend, active insulin, time of the reading | dashes; the last good reading in brackets | the same, with a banner once it lasts |
+| Normal reading | No sensor data | No sensor data, 5 minutes on | Pump alarm |
+|:---:|:---:|:---:|:---:|
+| <img src="docs/img/coreink-default.jpg" alt="Display showing 96 mg/dL with a steady trend arrow, 2.1 U active insulin, updated now" width="200"> | <img src="docs/img/coreink-no-sensor-data.jpg" alt="Display with dashes instead of a reading and the last good value, 104, in brackets" width="200"> | <img src="docs/img/coreink-no-sensor-data-5min.jpg" alt="Display with dashes, the last good value 133 in brackets, and a black banner: No sensor data (5 min)" width="200"> | <img src="docs/img/coreink-alarm.jpg" alt="Display showing 65 mg/dL in white on black, 1.9 U active insulin, and a black banner: Low Sensor Glucose (12:03)" width="200"> |
+| glucose, trend, active insulin, time of the reading | dashes; the last good reading in brackets | the same, with a banner once it lasts | below 70 or above 180 the reading turns white on black; the pump's alarm and its time in a banner, with a beep |
 
 It is two parts that are built, installed and taken on a trip together:
 
