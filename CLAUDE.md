@@ -32,8 +32,10 @@ JSON shape is a breaking change for the other side — change both or neither.
   `{"end": "<local timestamp>", "step": 300, "sg": [36 values, oldest first,
   0 = none]}`, or 404. `end` is local wall clock, read like
   `lastAlarm.dateTime`. All three frontends draw it the same way: the
-  window ends now, 40-300 mg/dL, a gap breaks the line, hours only on the
-  axis, a failed fetch keeps the previous trend.
+  window ends now; the scale follows the readings but always shows 70 and
+  180 (at least 60-200, within 40-400, ends rounded to 20; the top labelled
+  only above 200); a gap breaks the line; hours only on the axis; a failed
+  fetch keeps the previous trend.
 - `GET /carelink/fallback` — `{"ssid": ..., "psk": ...}` for the Pi's travel
   hotspot, or 404. The display stores it in WiFi slot 2.
 

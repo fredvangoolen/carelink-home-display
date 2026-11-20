@@ -23,11 +23,23 @@ const HYPER_MGDL = 180;
 const NEED_LOGIN_MARKER = "Valid token required";
 // The trend: /carelink/trend, 36 readings 5 minutes apart. The display's
 // window and scale: it ends NOW, so a line that stops short means no
-// readings since; readings above the top are pinned to it.
+// readings since; the scale follows the readings but always keeps 70 and
+// 180 in view (trendScale).
 const TREND_SLOTS = 36;
 const TREND_STEP_S = 300;
-const TREND_Y_MIN = 40;
-const TREND_Y_MAX = 300;
+const TREND_Y_FLOOR = 40, TREND_Y_CEIL = 400;   // what the sensor can read
+const TREND_Y_PAD = 10, TREND_Y_STEP = 20;
+const TREND_Y_TOP_PLAIN = 200;   // the narrowest scale's top: not labelled, it would sit on 180
+
+// [ymin, ymax] for readings lo..hi (0 = none), the display's rule: the lower
+// of 70 and lo to the higher of 180 and hi, widened by 10, rounded out to 20,
+// within 40-400. At least 60-200, so a quiet line stays quiet.
+function trendScale(lo, hi) {
+  const a = lo > 0 ? Math.min(HYPO_MGDL, lo) : HYPO_MGDL;
+  const b = Math.max(HYPER_MGDL, hi);
+  return [Math.max(TREND_Y_FLOOR, Math.floor((a - TREND_Y_PAD) / TREND_Y_STEP) * TREND_Y_STEP),
+          Math.min(TREND_Y_CEIL, Math.ceil((b + TREND_Y_PAD) / TREND_Y_STEP) * TREND_Y_STEP)];
+}
 
 const LINK = { OK: 0, NO_SENSOR: 1, PROXY_NO_DATA: 2, PROXY_LOGIN: 3, NO_PROXY: 4 };
 const LINK_TEXT = ["", "No sensor data", "Proxy has no data", "CareLink login needed", "No link to proxy"];
@@ -330,16 +342,29 @@ function svg(parent, name, attrs, text) {
 function drawTrend() {
   const c = $("chart");
   c.replaceChildren();
-  const W = 600, H = 240, x0 = 0, x1 = W - 44, y0 = 6, y1 = H - 28;
-  const ym = (v) => y1 - (Math.min(Math.max(v, TREND_Y_MIN), TREND_Y_MAX) - TREND_Y_MIN) * (y1 - y0) / (TREND_Y_MAX - TREND_Y_MIN);
+  const W = 600, H = 240, x0 = 0, x1 = W - 44, y0 = 10, y1 = H - 28;
+  const wend = now(), wstart = wend - TREND_SLOTS * TREND_STEP_S;
+  const t = model.trend;
+  const points = [];   // [time, value] of every slot in the window, 0 = none
+  if (t) t.sg.forEach((v, i) => {
+    const at = t.end - (TREND_SLOTS - 1 - i) * TREND_STEP_S;
+    if (at >= wstart && at <= wend) points.push([at, v]);
+  });
+  const vals = points.map((p) => p[1]).filter((v) => v);
+  const [ymin, ymax] = trendScale(vals.length ? Math.min(...vals) : 0, vals.length ? Math.max(...vals) : 0);
+  const ym = (v) => y1 - (Math.min(Math.max(v, ymin), ymax) - ymin) * (y1 - y0) / (ymax - ymin);
   svg(c, "rect", { class: "band", x: x0, y: ym(HYPER_MGDL), width: x1 - x0, height: ym(HYPO_MGDL) - ym(HYPER_MGDL) });
   for (const [v, cls] of [[HYPO_MGDL, "lo"], [HYPER_MGDL, "hi"]]) {
     svg(c, "line", { class: cls, x1: x0, x2: x1, y1: ym(v), y2: ym(v) });
     svg(c, "text", { x: x1 + 6, y: ym(v) + 5 }, String(v));
   }
+  if (ymax > TREND_Y_TOP_PLAIN && ym(HYPER_MGDL) - y0 >= 20) {
+    // The top of the scale, what a high peak is read against.
+    svg(c, "line", { class: "top", x1: x0, x2: x1, y1: y0, y2: y0 });
+    svg(c, "text", { x: x1 + 6, y: y0 + 5 }, String(ymax));
+  }
   svg(c, "line", { class: "axis", x1: x0, x2: x1, y1: y1, y2: y1 });
 
-  const wend = now(), wstart = wend - TREND_SLOTS * TREND_STEP_S;
   const xm = (t) => x0 + (t - wstart) * (x1 - x0) / (wend - wstart);
   for (let h = (Math.floor(wstart / 3600) + 1) * 3600; h <= wend; h += 3600) {
     svg(c, "line", { class: "axis", x1: xm(h), x2: xm(h), y1: y1, y2: y1 + 5 });
@@ -349,23 +374,19 @@ function drawTrend() {
 
   // Broken wherever a slot has no reading; a lone reading is a dot. The big
   // dot marks the newest slot only when it has a reading, as on the display.
-  const t = model.trend;
   let seg = [], last = null, drawn = 0;
   const flush = () => {
     if (seg.length > 1) svg(c, "polyline", { class: "line", points: seg.join(" ") });
     else if (seg.length === 1) { const [x, y] = seg[0].split(","); svg(c, "circle", { class: "pt", cx: x, cy: y, r: 2.5 }); }
     seg = [];
   };
-  if (t) {
-    t.sg.forEach((v, i) => {
-      const at = t.end - (TREND_SLOTS - 1 - i) * TREND_STEP_S;
-      if (!v || at < wstart || at > wend) { flush(); last = null; return; }
-      last = [xm(at), ym(v)];
-      seg.push(last[0].toFixed(1) + "," + last[1].toFixed(1));
-      drawn++;
-    });
-    flush();
+  for (const [at, v] of points) {
+    if (!v) { flush(); last = null; continue; }
+    last = [xm(at), ym(v)];
+    seg.push(last[0].toFixed(1) + "," + last[1].toFixed(1));
+    drawn++;
   }
+  flush();
   if (last) svg(c, "circle", { class: "dot", cx: last[0], cy: last[1], r: 6 });
   if (!drawn)
     svg(c, "text", { x: (x0 + x1) / 2, y: (y0 + y1) / 2, "text-anchor": "middle" },

@@ -96,13 +96,22 @@ The desktop monitor and the display page draw the same chart, 2026-11-20:
 the monitor against carelink-piet (`--check` prints the trend line), the
 page in headless Chrome under the proxy's CSP (no violations) with live data,
 and with a made-up trend for what live data did not show: gaps break the
-line, a lone reading is a small dot, 350 and 360 sit on the top edge, and a
-trend ending 40 minutes ago stops that far short of now. Not yet seen in a
-phone browser, or on Windows and macOS.
+line, a lone reading is a small dot, and a trend ending 40 minutes ago
+stops that far short of now. Not yet seen in a phone browser, or on Windows
+and macOS.
+
+The scale follows the readings (it was a fixed 40-300 until the same day):
+the three implementations give the same scale for the same seven cases,
+from no readings (60-200) to 40 and 400 (40-400). Seen on the page with
+live data (60-200, the line about twice as tall) and with a made-up peak
+near 290 (top 300, labelled); on the desktop with made-up values. On the
+panel the `200` label of the narrowest scale came too close to 180 and was
+dropped: the top is labelled only above 200. The zone above 180 is now
+dotted like the one below 70. Checked on the panel with live data.
 
 Not yet seen: the trend across a DST change (expected: an hour's gap or
 overlap for three hours), a sensor gap on the panel (the line should break),
-a reading above 300 (pinned to the top), and a display against a proxy
+a high peak on the panel (top labelled), and a display against a proxy
 without the URL ("No trend from proxy", the other screens unaffected).
 
 ## Not tested yet

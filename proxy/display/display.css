@@ -33,6 +33,7 @@ main { max-width: 640px; margin: 0 auto; padding: 16px; }
 #chart .lo { stroke: var(--low); stroke-dasharray: 6 4; }
 #chart .hi { stroke: var(--high); stroke-dasharray: 6 4; }
 #chart .axis { stroke: var(--dim); }
+#chart .top { stroke: var(--dim); stroke-dasharray: 1 6; }
 #chart .line { fill: none; stroke: var(--fg); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
 #chart .pt { fill: var(--fg); }
 #chart .dot { fill: var(--fg); stroke: var(--bg); stroke-width: 3; }

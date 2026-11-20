@@ -575,16 +575,37 @@ void draw_stats_screen(LovyanGFX &g, const State &s) {
 // The last 3 hours as a line, the way the CareLink app shows it, cut down to
 // what a 200 px black-and-white panel carries: no colour bands, so the two
 // thresholds this display already uses (70 and 180) are dashed lines, and
-// the zone below 70 - the dangerous end - is dotted, as the stats screen
-// gives it the heaviest ink.
+// the zones outside them are dotted, leaving the in-range band clear.
 //
 // The window ends NOW, not at the newest reading, so a sensor that stopped
 // an hour ago shows as a line that stops an hour short of the right edge.
 // Both ends are local wall clock: the readings arrive that way from CareLink
 // and "now" is shifted the same way the alarm time is compared.
-static const int TREND_Y_MIN = 40;    // the sensor reads nothing below 40
-static const int TREND_Y_MAX = 300;   // higher readings are pinned to the top
+//
+// The scale follows the readings but always keeps 70 and 180 in view: from
+// the lower of 70 and the lowest reading, to the higher of 180 and the
+// highest, each widened by 10 and rounded out to a multiple of 20, within
+// the sensor's 40-400. So the narrowest scale is 60-200: a quiet day's
+// wobble stays small instead of filling the panel, while a normal day
+// gets about twice the height the fixed 40-300 gave it and a peak above
+// 300 is no longer flattened. desktop/ and proxy/display/ use the same rule.
+static const int TREND_Y_FLOOR = 40;    // the sensor reads nothing below 40
+static const int TREND_Y_CEIL  = 400;   // ... or above 400
+static const int TREND_Y_PAD   = 10;
+static const int TREND_Y_STEP  = 20;
+static const int TREND_Y_TOP_PLAIN = 200;   // top of the narrowest scale: not labelled
 static const long TREND_WINDOW_S = (long)TREND_SLOTS * TREND_STEP_S;
+
+// The scale for readings between lo and hi (0 = no readings).
+static void trend_scale(int lo, int hi, int &ymin, int &ymax) {
+  int a = HYPO_THRESHOLD_MGDL, b = HYPER_THRESHOLD_MGDL;
+  if (lo > 0 && lo < a) a = lo;
+  if (hi > b) b = hi;
+  a = (a - TREND_Y_PAD) / TREND_Y_STEP * TREND_Y_STEP;
+  b = (b + TREND_Y_PAD + TREND_Y_STEP - 1) / TREND_Y_STEP * TREND_Y_STEP;
+  ymin = a < TREND_Y_FLOOR ? TREND_Y_FLOOR : a;
+  ymax = b > TREND_Y_CEIL ? TREND_Y_CEIL : b;
+}
 
 void draw_trend_screen(LovyanGFX &g, const State &s, const Config &c) {
   g.fillScreen(COLOR_WHITE);
@@ -599,26 +620,6 @@ void draw_trend_screen(LovyanGFX &g, const State &s, const Config &c) {
   const int x1 = PANEL_W - MARGIN - label_w - 4;      // plot's right edge
   const int y0 = top + 2;                              // plot's top
   const int y1 = PANEL_H - label_h - 6;                // plot's baseline
-  auto ymap = [&](int v) {
-    if (v < TREND_Y_MIN) v = TREND_Y_MIN;
-    if (v > TREND_Y_MAX) v = TREND_Y_MAX;
-    return y1 - (v - TREND_Y_MIN) * (y1 - y0) / (TREND_Y_MAX - TREND_Y_MIN);
-  };
-
-  // Below 70, dotted.
-  int ylow = ymap(HYPO_THRESHOLD_MGDL);
-  for (int y = ylow + 3; y < y1; y += 3)
-    for (int x = x0 + ((y / 3) % 2) * 2; x <= x1; x += 4)
-      g.drawPixel(x, y, COLOR_BLACK);
-  // The two thresholds, dashed, labelled on the right.
-  for (int v : {HYPO_THRESHOLD_MGDL, HYPER_THRESHOLD_MGDL}) {
-    int y = ymap(v);
-    for (int x = x0; x <= x1; x += 6) g.drawFastHLine(x, y, 3, COLOR_BLACK);
-    char lab[8];
-    snprintf(lab, sizeof(lab), "%d", v);
-    draw_text(g, lab, x1 + 4, y - label_h / 2, FONT_LABEL, COLOR_BLACK);
-  }
-  g.drawFastHLine(x0, y1, x1 - x0 + 1, COLOR_BLACK);
 
   // The window, in local wall clock. Without a valid clock the newest reading
   // stands in for now: better a correct line with an unknown age than none.
@@ -627,6 +628,55 @@ void draw_trend_screen(LovyanGFX &g, const State &s, const Config &c) {
                   ? now + (time_t)(c.timezone + s.dstDelta) * 3600
                   : s.trendEnd;
   time_t wstart = wend - TREND_WINDOW_S;
+  auto slot_time = [&](int i) {
+    return s.trendEnd - (time_t)(TREND_SLOTS - 1 - i) * TREND_STEP_S;
+  };
+
+  // The scale, from the readings actually in the window.
+  int lo = 0, hi = 0;
+  for (int i = 0; i < TREND_SLOTS && s.trendEnd; i++) {
+    int v = s.trendSg[i];
+    time_t t = slot_time(i);
+    if (!v || t < wstart || t > wend) continue;
+    if (!lo || v < lo) lo = v;
+    if (v > hi) hi = v;
+  }
+  int ymin, ymax;
+  trend_scale(lo, hi, ymin, ymax);
+  auto ymap = [&](int v) {
+    if (v < ymin) v = ymin;
+    if (v > ymax) v = ymax;
+    return y1 - (v - ymin) * (y1 - y0) / (ymax - ymin);
+  };
+
+  // Outside the target range, dotted: below 70 and above 180 alike, so the
+  // clear band in between is "in range" at a glance. Which side a dotted
+  // stretch is on, the 70 and 180 labels say.
+  auto dots = [&](int ya, int yb) {
+    for (int y = ya; y < yb; y += 3)
+      for (int x = x0 + ((y / 3) % 2) * 2; x <= x1; x += 4)
+        g.drawPixel(x, y, COLOR_BLACK);
+  };
+  dots(ymap(HYPO_THRESHOLD_MGDL) + 3, y1);
+  dots(y0 + 1, ymap(HYPER_THRESHOLD_MGDL) - 1);
+  // The two thresholds, dashed, labelled on the right.
+  for (int v : {HYPO_THRESHOLD_MGDL, HYPER_THRESHOLD_MGDL}) {
+    int y = ymap(v);
+    for (int x = x0; x <= x1; x += 6) g.drawFastHLine(x, y, 3, COLOR_BLACK);
+    char lab[8];
+    snprintf(lab, sizeof(lab), "%d", v);
+    draw_text(g, lab, x1 + 4, y - label_h / 2, FONT_LABEL, COLOR_BLACK);
+  }
+  // The top of the scale, labelled only above the narrowest scale's 200:
+  // there it would sit right on top of 180 and say nothing, while above it
+  // it is what a high peak is read against.
+  if (ymax > TREND_Y_TOP_PLAIN && ymap(HYPER_THRESHOLD_MGDL) - y0 >= label_h + 2) {
+    char lab[8];
+    snprintf(lab, sizeof(lab), "%d", ymax);
+    draw_text(g, lab, x1 + 4, y0, FONT_LABEL, COLOR_BLACK);
+    for (int x = x0; x <= x1; x += 12) g.drawPixel(x, y0, COLOR_BLACK);
+  }
+  g.drawFastHLine(x0, y1, x1 - x0 + 1, COLOR_BLACK);
   auto xmap = [&](time_t t) {
     return x0 + (int)((long)(t - wstart) * (x1 - x0) / TREND_WINDOW_S);
   };
@@ -652,7 +702,7 @@ void draw_trend_screen(LovyanGFX &g, const State &s, const Config &c) {
   // The line: three pixels thick, broken wherever a slot has no reading.
   int drawn = 0, px = -1, py = -1;
   for (int i = 0; i < TREND_SLOTS && s.trendEnd; i++) {
-    time_t t = s.trendEnd - (time_t)(TREND_SLOTS - 1 - i) * TREND_STEP_S;
+    time_t t = slot_time(i);
     int v = s.trendSg[i];
     if (!v || t < wstart || t > wend) { px = -1; continue; }
     int x = xmap(t), y = ymap(v);

@@ -71,12 +71,24 @@ NEED_LOGIN_MARKER = "Valid token required"   # the proxy's own status string
 
 # The trend: the proxy's /carelink/trend, 36 readings 5 minutes apart. The
 # same window and scale as the display's trend screen: it ends NOW, so a line
-# that stops short means no readings since; readings above the top are
-# pinned to it.
+# that stops short means no readings since. The scale follows the readings
+# but always keeps 70 and 180 in view (trend_scale).
 TREND_SLOTS = 36
 TREND_STEP_S = 300
-TREND_Y_MIN = 40
-TREND_Y_MAX = 300
+TREND_Y_FLOOR, TREND_Y_CEIL = 40, 400   # what the sensor can read
+TREND_Y_PAD, TREND_Y_STEP = 10, 20
+TREND_Y_TOP_PLAIN = 200   # the narrowest scale's top: not labelled, it would sit on 180
+
+
+def trend_scale(lo, hi):
+    """(ymin, ymax) for readings lo..hi (0 = none), the display's rule: the
+    lower of 70 and lo to the higher of 180 and hi, widened by 10, rounded
+    out to 20, within 40-400. At least 60-200, so a quiet line stays quiet."""
+    a = min(HYPO_MGDL, lo) if lo > 0 else HYPO_MGDL
+    b = max(HYPER_MGDL, hi)
+    a = (a - TREND_Y_PAD) // TREND_Y_STEP * TREND_Y_STEP
+    b = -(-(b + TREND_Y_PAD) // TREND_Y_STEP) * TREND_Y_STEP
+    return max(a, TREND_Y_FLOOR), min(b, TREND_Y_CEIL)
 
 LINK_OK, LINK_NO_SENSOR, LINK_PROXY_NO_DATA, LINK_PROXY_LOGIN, LINK_NO_PROXY = range(5)
 LINK_TEXT = {
@@ -789,18 +801,32 @@ class Window:
         lh = self.font_small.metrics("linespace")
         x0, x1, y0, y1 = 0, w - lw - 2, 4, h - lh - 6
 
+        wend = m.now()
+        wstart = wend - TREND_SLOTS * TREND_STEP_S
+        t = m.trend
+        points = []   # (time, value) of every slot in the window, 0 = none
+        if t:
+            for i, v in enumerate(t["sg"]):
+                at = t["end"] - (TREND_SLOTS - 1 - i) * TREND_STEP_S
+                if wstart <= at <= wend:
+                    points.append((at, v))
+        vals = [v for _, v in points if v]
+        ymin, ymax = trend_scale(min(vals, default=0), max(vals, default=0))
+
         def ym(v):
-            v = min(max(v, TREND_Y_MIN), TREND_Y_MAX)
-            return y1 - (v - TREND_Y_MIN) * (y1 - y0) / (TREND_Y_MAX - TREND_Y_MIN)
+            v = min(max(v, ymin), ymax)
+            return y1 - (v - ymin) * (y1 - y0) / (ymax - ymin)
 
         c.create_rectangle(x0, ym(HYPER_MGDL), x1, ym(HYPO_MGDL), fill=C["band"], width=0)
         for v, col in ((HYPO_MGDL, C["low"]), (HYPER_MGDL, C["high"])):
             c.create_line(x0, ym(v), x1, ym(v), fill=col, dash=(4, 3))
             c.create_text(x1 + 6, ym(v), text=str(v), anchor="w", fill=C["dim"], font=self.font_small)
+        if ymax > TREND_Y_TOP_PLAIN and ym(HYPER_MGDL) - y0 >= lh + 2:
+            # The top of the scale, what a high peak is read against.
+            c.create_line(x0, y0, x1, y0, fill=C["dim"], dash=(1, 6))
+            c.create_text(x1 + 6, y0, text=str(ymax), anchor="w", fill=C["dim"], font=self.font_small)
         c.create_line(x0, y1, x1, y1, fill=C["dim"])
 
-        wend = m.now()
-        wstart = wend - TREND_SLOTS * TREND_STEP_S
         xm = lambda t: x0 + (t - wstart) * (x1 - x0) / (wend - wstart)
         hour = (int(wstart) // 3600 + 1) * 3600
         while hour <= wend:
@@ -819,18 +845,16 @@ class Window:
 
         # The dot marks the newest slot only when it has a reading, as on the
         # display; the message only when nothing at all was drawn.
-        t, seg, last, drawn = m.trend, [], None, 0
-        if t:
-            for i, v in enumerate(t["sg"]):
-                at = t["end"] - (TREND_SLOTS - 1 - i) * TREND_STEP_S
-                if not v or at < wstart or at > wend:
-                    flush(seg)
-                    seg, last = [], None
-                    continue
-                last = (xm(at), ym(v))
-                seg += last
-                drawn += 1
-            flush(seg)
+        seg, last, drawn = [], None, 0
+        for at, v in points:
+            if not v:
+                flush(seg)
+                seg, last = [], None
+                continue
+            last = (xm(at), ym(v))
+            seg += last
+            drawn += 1
+        flush(seg)
         if last:
             c.create_oval(last[0] - 5, last[1] - 5, last[0] + 5, last[1] + 5,
                           fill=C["fg"], outline=C["bg"], width=2)
