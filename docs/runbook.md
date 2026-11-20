@@ -327,7 +327,7 @@ A message appears only after about 15 minutes, so a short gap never shows. On th
 | Proxy active, 401/403 in the journal | Token rejected upstream | Same — renewal |
 | Cold boot takes 15 s of radio | Slot 0 holds an absent network | Reorder slots next time a board is in your hand |
 | Display cannot find the proxy, but the Pi is up | avahi renamed the Pi `carelink-01-2.local` after a network hiccup | The name check puts it back within 2 minutes; `journalctl -u carelink-mdns-name` shows when. If it repeats every 2 minutes, another machine on the network has the same name |
-| Pi on WiFi dropped off the network and came back by itself | A router hiccup; the WiFi watchdog reconnected it | `journalctl -u carelink-wifi-watchdog` lists every reconnect. Many of them means a flaky router: move the Pi to a cable |
+| Pi on WiFi dropped off the network and came back by itself | A router hiccup; the WiFi watchdog reconnected it | `journalctl -u carelink-wifi-watchdog` lists every reconnect; "switching the radio off and on" means the chip had to be reset. Drops at the same times every day are often the router changing channel: fix its 2.4 GHz channel. Many reconnects means a flaky router: move the Pi to a cable |
 | Display works, but *Device & Network* shows it on `carelink-travel` at home | The household WiFi is not getting it to the proxy; it fell back to the Pi's hotspot | It tries the household WiFi again every hour. If it stays, check the household WiFi name and password on the display, and mDNS on that network |
 | Everything fine, no data since a date | Check the patient changed phone or password | Ask before debugging |
 

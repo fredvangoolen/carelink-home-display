@@ -124,7 +124,17 @@ whose WPA2/WPA3 announcement did not match its key exchange
 `wlan0` disconnected, no setup hotspot up and a saved WiFi network, it brings
 the saved networks up by hand, most recently used first. It does nothing on
 Ethernet. `journalctl -u carelink-wifi-watchdog` lists every reconnect, which
-also shows a flaky router. Test it on a Pi that is on the cable with
+also shows a flaky router.
+
+Retrying is not always enough. A router that changes its 2.4 GHz channel
+(one did so every 6 hours) can leave the Pi's WiFi chip failing every WPA
+handshake (`4-Way Handshake failed - pre-shared key may be incorrect`), with
+the right password, until the radio is switched off and on: the radio is
+shared with the travel hotspot and works on one channel at a time. So from
+the second failed run in a row the watchdog cycles the radio before trying
+again (`failed N time(s) in a row; switching the radio off and on first` in
+the journal). The count lives in `/run/carelink-wifi-watchdog.fails` and
+starts over at a reboot or a successful connection. Test it on a Pi that is on the cable with
 `sudo IGNORE_ETHERNET=1 /opt/carelink-wifi-watchdog/carelink-wifi-watchdog.sh`.
 
 ## Own name on the network

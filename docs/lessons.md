@@ -74,6 +74,17 @@ wrong password. It asks for a new one, finds nobody to ask, and stops
 connecting to that network for good. One router hiccup was enough to keep a Pi
 offline for 10 hours. That is what `appliance/wifi-watchdog/` is for.
 
+## A router's channel change can wedge the Pi's WiFi chip
+
+The Pi's radio runs its own WiFi and the travel hotspot on one channel. A
+household router that changed its 2.4 GHz channel every 6 hours dropped the
+Pi each time; usually it rejoined within minutes, but once the chip came out
+of it failing every WPA handshake, with the right password, for 45 minutes
+while the watchdog retried. Switching the radio off and on cleared it at
+once, so the watchdog now does that from its second failed run. If it
+happens often at one address, fixing the router's 2.4 GHz channel removes
+the trigger.
+
 ## avahi can lose the Pi's name and not take it back
 
 After a WiFi reconnect, avahi may report a host name conflict, probably on
