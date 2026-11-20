@@ -46,7 +46,8 @@ from epochs, the stale banner at 20 minutes, the link states, the alarm
 window with `lastAlarm.dateTime` read as local time, low/high alarms
 dropped once the reading recovers, and with no reading but the pump in
 range of the phone, the pump's banner before "No sensor data"; DELIVERY_SUSPEND
-reads "Pump suspended". Change them in all three or none.
+reads "Pump suspended"; the 24-hour shares used only when they add up to
+100 (within 2), else the last good set. Change them in all three or none.
 
 Plan A / plan B (docs/travel.md) spans firmware slot 2, `appliance/travel-ap/`
 and that endpoint. Document it as one feature, in `docs/travel.md`.

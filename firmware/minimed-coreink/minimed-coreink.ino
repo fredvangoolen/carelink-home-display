@@ -661,6 +661,16 @@ static bool learn_fallback(const Config &c) {
   return true;
 }
 
+// The 24-hour shares are usable only when they add up to 100 (rounding
+// allowed): CareLink zeroes timeInRange alone while the phone is offline.
+static const int STATS_SUM_TOLERANCE = 2;
+
+static bool stats_consistent(int in, int above, int below) {
+  if (in < 0 || above < 0 || below < 0) return false;
+  int sum = in + above + below;
+  return sum >= 100 - STATS_SUM_TOLERANCE && sum <= 100 + STATS_SUM_TOLERANCE;
+}
+
 // Mirrors handle_pumpdataupdate(). Returns false if there is no usable data;
 // the caller draws "no data" rather than treating it as fatal.
 static bool fetch_pump_data(const Config &c, State &s) {
@@ -779,6 +789,19 @@ static bool fetch_pump_data(const Config &c, State &s) {
   s.aboveHyper  = doc["aboveHyperLimit"]  | -1;
   s.belowHypo   = doc["belowHypoLimit"]   | -1;
   s.averageSG   = doc["averageSG"]        | -1;
+  // The three shares must add up to 100. While the phone is out of contact
+  // CareLink sends timeInRange 0 with the other two unchanged (seen
+  // 2026-11-20: 0 / 8 / 6), which drew "In target 0%". Such a set is
+  // dropped here, all four together, and the last good one is carried
+  // forward by the caller, as lastGoodSg is. The in-range share is NOT
+  // worked out as 100 - above - below: that would be a number CareLink did
+  // not give. desktop/ and proxy/display/ apply the same rule.
+  if (!stats_consistent(s.timeInRange, s.aboveHyper, s.belowHypo)) {
+    if (s.timeInRange >= 0 || s.aboveHyper >= 0 || s.belowHypo >= 0)
+      Serial.printf("stats: %d/%d/%d do not add up to 100, keeping the last good set\n",
+                    s.timeInRange, s.aboveHyper, s.belowHypo);
+    s.timeInRange = s.aboveHyper = s.belowHypo = s.averageSG = -1;
+  }
 
   // The proxy is healthy and answering with real data; if there is still no
   // reading, the gap is upstream of it - pump out of range of the phone, or
@@ -1728,6 +1751,14 @@ void setup() {
     if (!s.trendEnd) {
       memcpy(s.trendSg, rtc.snap.trendSg, sizeof(s.trendSg));
       s.trendEnd = rtc.snap.trendEnd;
+    }
+    // And the 24-hour stats, when this answer's did not add up (see
+    // fetch_pump_data): the last good set, all four together, or none.
+    if (s.timeInRange < 0) {
+      s.timeInRange = rtc.snap.timeInRange;
+      s.aboveHyper  = rtc.snap.aboveHyper;
+      s.belowHypo   = rtc.snap.belowHypo;
+      s.averageSG   = rtc.snap.averageSG;
     }
     // Same trap as lastGoodSg: rtc.snap is replaced wholesale below, so
     // without this the battery step resets to "no history" every cycle and

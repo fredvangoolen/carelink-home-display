@@ -293,6 +293,12 @@ def parse(doc):
     s["phoneInRange"] = get(doc, "conduitInRange")
     s["stats"] = tuple(num(get(doc, k), -1) for k in
                        ("timeInRange", "aboveHyperLimit", "belowHypoLimit", "averageSG"))
+    # The three shares must add up to 100. While the phone is offline CareLink
+    # sends timeInRange 0 with the others unchanged; such a set is dropped and
+    # the last good one shown instead (Model.last_good_stats), as on the
+    # display. 100 - above - below is not worked out: CareLink did not say it.
+    if not stats_consistent(s["stats"]):
+        s["stats"] = (-1, -1, -1, -1)
     return s
 
 
@@ -317,6 +323,14 @@ def fetch_trend(proxy):
     """The trend, or None when the proxy has none (404: none yet, or too old)."""
     r = http_get(proxy, "carelink/trend")
     return parse_trend(r.body) if r.status == 200 else None
+
+
+STATS_SUM_TOLERANCE = 2
+
+
+def stats_consistent(st):
+    shares = st[:3]
+    return min(shares) >= 0 and abs(sum(shares) - 100) <= STATS_SUM_TOLERANCE
 
 
 def poll(proxy, source_file=None):
@@ -380,6 +394,7 @@ class Model:
         self.raw = ""
         self.reply = None
         self.trend = None          # last good /carelink/trend, kept across a failed fetch
+        self.last_good_stats = None  # last 24-h stats that added up to 100
 
     def now(self):
         # The proxy's clock, not this computer's: a PC that is minutes off
@@ -406,6 +421,8 @@ class Model:
             self.last_good_sg = state["sg"]
         if trend:
             self.trend = trend
+        if state and min(state["stats"]) >= 0:
+            self.last_good_stats = state["stats"]
 
     def age(self):
         if not self.state or not self.state["lastUpdate"]:
@@ -790,9 +807,9 @@ class Window:
         self.reservoir.configure(text=show(s and s["reservoir"], "%.0f U"))
         self.sensor.configure(text=(sensor_text(s) or "--") if current else "--")
 
-        st = s["stats"] if s else (-1, -1, -1, -1)
+        st = m.last_good_stats
         self.stats.configure(text="24 h: %d%% in range, %d%% above, %d%% below, average %d" % st
-                             if current and min(st) >= 0 else "")
+                             if current and st else "")
 
         age = m.age()
         if age is None:

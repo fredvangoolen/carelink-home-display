@@ -140,6 +140,16 @@ reconnects and clears the counter; a connected run clears a leftover
 counter. Not yet seen: the next real channel change wedging the chip and the
 watchdog clearing it unattended.
 
+## 24-hour statistics that do not add up
+
+2026-11-20, phone out of contact: CareLink sent timeInRange 0 with above 8,
+below 6, average 117, and the stats screen drew "In target 0%". The rule
+(use a set only when the three add up to 100 within 2, else the last good
+set, or "--" with none) checked in the desktop's Model and the page's check
+with 0/8/6, 86/8/6, 85/8/6 and none; the board flashed with it shows a good
+set (86/8/6) normally. Not yet seen: the board and the page during a real
+phone outage.
+
 ## Not tested yet
 
 - **The alarm sound heard by ear** (desktop *Monitor → Test sound*, and the

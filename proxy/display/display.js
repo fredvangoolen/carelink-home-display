@@ -54,7 +54,7 @@ const $ = (id) => document.getElementById(id);
 
 const model = {
   state: null, link: LINK.OK, failStreak: 0, skew: 0, lastGoodSg: 0,
-  lastPoll: null, answer: "-", raw: "", trend: null,
+  lastPoll: null, answer: "-", raw: "", trend: null, lastGoodStats: null,
 };
 let audio = null, alarmKey = null, alarmSounded = 0, pollTimer = null, polling = false, rawShown = null;
 
@@ -243,6 +243,12 @@ async function pollOnce() {
       model.state = parse(doc);
       model.link = model.state.sg > 0 ? LINK.OK : LINK.NO_SENSOR;
       if (model.state.sg > 0) model.lastGoodSg = model.state.sg;
+      // The 24-hour shares must add up to 100; while the phone is offline
+      // CareLink sends timeInRange 0 with the others unchanged. Such a set is
+      // ignored and the last good one shown, as on the display; 100 - above
+      // - below is not worked out, CareLink did not say it.
+      const st = model.state.stats;
+      if (Math.min(...st) >= 0 && Math.abs(st[0] + st[1] + st[2] - 100) <= 2) model.lastGoodStats = st;
       // Kept across a failed fetch, like the display: one miss must not
       // blank the chart, and the window's own end keeps it honest.
       const t = await fetchTrend();
@@ -306,8 +312,8 @@ function draw() {
   setText("battery", show(s && s.battery, (v) => v + " %"));
   setText("reservoir", show(s && s.reservoir, (v) => v.toFixed(0) + " U"));
   setText("sensor", current ? sensorText(s) || "--" : "--");
-  const st = s ? s.stats : [-1];
-  setText("stats", current && Math.min(...st) >= 0
+  const st = model.lastGoodStats;
+  setText("stats", current && st
     ? "24 h: " + st[0] + "% in range, " + st[1] + "% above, " + st[2] + "% below, average " + st[3] : "");
 
   const ag = age();
