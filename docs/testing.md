@@ -138,8 +138,12 @@ plain "No sensor data". Firmware 0.7-arduino. Checked: the desktop `Model`
 gives "since" with the right clock time for a made-up gap of 25 minutes,
 "for 2 days" for one of 2 days, and plain text with no reading seen; the
 page's script passes `node --check`; the firmware compiles (`huge_app`, 41%
-of flash). Not yet done: flashing a board, and any of the three during a real
-sensor gap.
+of flash). Seen on a board on 2026-11-21: a real sensor gap from 21:54,
+confirmed at 22:10 on the third poll without a glucose value. The phone's
+last upload stayed about 60 s old at every poll (the old firmware would have
+shown "No sensor data (1 min)"); the panel showed "No sensor data since
+21:54". Not yet seen: the desktop and the page during a real gap, and "for N
+days".
 
 ## An old alarm over a link fault
 
@@ -152,7 +156,9 @@ a fetch worked again. The desktop and the page already showed no alarm over
 a confirmed link fault and checked the window on every render. The firmware
 now does the same before each redraw from the snapshot (`expire_alarm()`:
 the failed-WiFi path, the no-data path and a button wake). Checked: it
-compiles. Not yet done: on a board, an alarm followed by a stopped proxy.
+compiles and runs on a board (2026-11-21). Not yet done: an alarm followed
+by a stopped proxy, which should show "No link to proxy" in place of the
+alarm from the third failed poll on.
 
 ## The WiFi watchdog's radio cycle
 
