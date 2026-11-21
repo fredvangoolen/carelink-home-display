@@ -43,7 +43,8 @@ JSON shape is a breaking change for the other side — change both or neither.
 Three frontends read `nohistory` — the firmware, `desktop/minimed_desktop.py`
 and `proxy/display/display.js` — and must apply the same rules: reading age
 from epochs, the stale banner at 20 minutes, the link states, the alarm
-window with `lastAlarm.dateTime` read as local time, low/high alarms
+window with `lastAlarm.dateTime` read as local time (checked on every
+redraw, and no alarm over a confirmed link fault), low/high alarms
 dropped once the reading recovers, and with no reading but the pump in
 range of the phone, the pump's banner before "No sensor data"; "No sensor
 data since HH:MM" from the upload that last carried a reading (not from

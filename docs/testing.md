@@ -141,6 +141,19 @@ page's script passes `node --check`; the firmware compiles (`huge_app`, 41%
 of flash). Not yet done: flashing a board, and any of the three during a real
 sensor gap.
 
+## An old alarm over a link fault
+
+2026-11-21, found reading the code: the firmware checked the 15-minute alarm
+window only on a poll that got data. A cycle that failed kept the snapshot,
+alarm included, and the alarm outranks everything, so an alarm raised just
+before the token expired or the proxy went away stayed up ("Low Sensor
+Glucose (14:05)") and hid "CareLink login needed" or "No link to proxy" until
+a fetch worked again. The desktop and the page already showed no alarm over
+a confirmed link fault and checked the window on every render. The firmware
+now does the same before each redraw from the snapshot (`expire_alarm()`:
+the failed-WiFi path, the no-data path and a button wake). Checked: it
+compiles. Not yet done: on a board, an alarm followed by a stopped proxy.
+
 ## The WiFi watchdog's radio cycle
 
 2026-11-20 on a staging set on WiFi only: the router's 2.4 GHz channel

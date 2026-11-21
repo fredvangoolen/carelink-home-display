@@ -563,6 +563,31 @@ static void resolve_alarm(JsonVariantConst lastAlarm, const Config &c, State &s)
   s.alarm_local = naive_local;
 }
 
+// The alarm rules for a redraw from the snapshot, without a fresh poll.
+// resolve_alarm() runs only when a poll gets data; a cycle that fails keeps
+// the snapshot, alarm included, and the alarm outranks every link fault. So
+// an alarm raised just before the token expired or the proxy went away stayed
+// on the panel until a fetch worked again, hiding "CareLink login needed" or
+// "No link to proxy" for as long as the fault lasted. The desktop and the web
+// page show no alarm once a link fault is confirmed, and check the 15-minute
+// window on every render; this does the same. With no valid clock the window
+// keeps the alarm: the cautious side.
+static void expire_alarm(State &s, const Config &c, bool link_fault) {
+  if (!s.alarm_text[0]) return;
+  const char *why = nullptr;
+  const time_t now = time(nullptr);
+  if (link_fault) {
+    why = "link fault confirmed";
+  } else if (s.alarm_local && now > TIME_VALID_EPOCH) {
+    time_t utc = s.alarm_local - (time_t)(c.timezone + s.dstDelta) * 3600;
+    if (utc <= now - (time_t)ALARM_RECENCY_S) why = "past its 15 min window";
+  }
+  if (!why) return;
+  Serial.printf("alarm '%s' dropped: %s\n", s.alarm_text, why);
+  s.alarm_text[0] = '\0';
+  s.alarm_local = 0;
+}
+
 // ------------------------------------------------------------------ buzzer
 
 static const int BUZZER_FREQ_HZ = 2000;   // near the resonant peak of a piezo this size
@@ -1565,6 +1590,7 @@ void setup() {
     rtc.screen = screen_step(rtc.screen, dir);
     Serial.printf("toggle wake: %s -> screen %d\n",
                   dir == SCREEN_BACK ? "back" : "fwd", rtc.screen);
+    expire_alarm(rtc.snap, cfg, false);
     refresh_battery();
     compose(rtc.screen, rtc.snap, cfg, false, rtc.session_start);
     rtc.screen = run_toggle_session(rtc.screen, rtc.snap, cfg, rtc.session_start);
@@ -1615,6 +1641,7 @@ void setup() {
     // The quick looks in between do not count; see WIFI_RETRY_S.
     if (rtc.wifi_fails == 1 || !quick) note_link(LINK_NO_PROXY);
     if (link_fault_confirmed()) rtc.snap.link = LINK_NO_PROXY;
+    expire_alarm(rtc.snap, cfg, link_fault_confirmed());
     // BOTH of these lines are load-bearing, and their absence is what turned
     // one flaky cycle into a blank panel that "recovered by itself".
     //
@@ -1861,6 +1888,7 @@ void setup() {
     // one; without the streak, one flaky cycle raises a banner that is gone
     // again before anyone reads it.
     if (confirmed) rtc.snap.link = s.link;
+    expire_alarm(rtc.snap, cfg, confirmed);
     // The schedule has to advance on this path too, or sleep_until() falls to
     // its 5s floor and the board spins.
     rtc.next_poll = time(nullptr) + POLL_PERIOD_S;
