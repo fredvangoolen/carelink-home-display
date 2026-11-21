@@ -265,7 +265,7 @@ The household needs to know four things. Resist telling them more — everything
 
 **1. What it shows.** A glucose reading, a trend arrow and the time it was taken. Flick the side switch to page through the glucose statistics, pump battery, reservoir and sensor life, and the network screen, which is for when you ask them to read something out.
 
-**2. What normal looks like.** The number is a few minutes old, always. When there is no reading, a line at the bottom says why, and only after about 15 minutes, so a short gap never shows: *No sensor data* (sensor or pump not reaching the phone; it clears itself), *Proxy has no data*, *CareLink login needed* (call you), *No link to proxy* (the display cannot reach the Pi), and *No new reading for …* (everything answers, but the reading has not changed for 20 minutes or more). *No sensor data* also says how long it has lasted.
+**2. What normal looks like.** The number is a few minutes old, always. When there is no reading, a line at the bottom says why, and only after about 15 minutes, so a short gap never shows: *No sensor data* (sensor or pump not reaching the phone; it clears itself), *Proxy has no data*, *CareLink login needed* (call you), *No link to proxy* (the display cannot reach the Pi), and *No new reading for …* (everything answers, but the reading has not changed for 20 minutes or more). *No sensor data* also says since when: the time of the last reading, or how many days past a day.
 
 **3. How to tell it is stuck.** The e-paper keeps its last picture with no power, so a dead display looks exactly like a live one. **Check the time on the screen.** More than about fifteen minutes old means something needs attention. The remedy is the same as for anything else: unplug both boxes, wait ten seconds, plug them back in, wait five minutes.
 
@@ -307,7 +307,7 @@ Two things say which link in the chain pump → phone → CareLink → proxy →
 
 | Bottom of the main screen | Where it broke | Proxy page |
 | --- | --- | --- |
-| *No sensor data*, with how long | sensor, pump, or the patient's phone not uploading; clears itself | *Login successful*, last data recent |
+| *No sensor data since …* | sensor, pump, or the patient's phone not uploading; clears itself | *Login successful*, last data recent |
 | *No new reading for …* | everything answers, but the reading has not changed for 20 minutes: the patient's phone app, or a proxy stuck on one fetch | if the phone is fine: restart the proxy |
 | *Proxy has no data* | the Pi cannot reach CareLink: its own internet connection, or a CareLink outage | *Logged in, but no data from CareLink*, with the reason; it retries every minute |
 | *CareLink login needed* | the token: CareLink refused it | *Valid token required*; *refused the token refresh* means a renewal is needed |

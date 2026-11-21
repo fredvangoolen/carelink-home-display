@@ -45,7 +45,10 @@ and `proxy/display/display.js` — and must apply the same rules: reading age
 from epochs, the stale banner at 20 minutes, the link states, the alarm
 window with `lastAlarm.dateTime` read as local time, low/high alarms
 dropped once the reading recovers, and with no reading but the pump in
-range of the phone, the pump's banner before "No sensor data"; DELIVERY_SUSPEND
+range of the phone, the pump's banner before "No sensor data"; "No sensor
+data since HH:MM" from the upload that last carried a reading (not from
+`lastConduitUpdateServerDateTime` now, which keeps moving through a sensor
+gap), "for N days" past a day; DELIVERY_SUSPEND
 reads "Pump suspended"; the 24-hour shares used only when they add up to
 100 (within 2), else the last good set. Change them in all three or none.
 

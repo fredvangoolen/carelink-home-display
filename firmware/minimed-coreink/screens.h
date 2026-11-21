@@ -12,7 +12,7 @@
 
 // Shown on the info screen; kept here so both the screen and the sketch
 // agree on one string.
-#define VERSION_STR "0.6-arduino"
+#define VERSION_STR "0.7-arduino"
 
 static const int PANEL_W = 200;
 static const int PANEL_H = 200;

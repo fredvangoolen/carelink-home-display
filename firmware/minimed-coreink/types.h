@@ -75,6 +75,12 @@ struct State {
   // 0, which is the whole point: it is carried forward across cycles rather
   // than recomputed, because the state is replaced wholesale on every fetch.
   int lastGoodSg;
+  // When that reading arrived: the phone upload that carried it
+  // (lastConduitUpdateServerDateTime), epoch UTC; 0 = not seen since boot.
+  // Carried forward the same way. lastUpdate cannot stand in for it: the
+  // phone keeps uploading without a glucose value through a sensor gap, so
+  // lastUpdate stays minutes old while the gap lasts hours.
+  time_t lastGoodAt;
   char trend[16];
   float activeInsulin;
   int batteryPct;

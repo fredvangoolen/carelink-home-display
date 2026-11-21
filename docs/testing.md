@@ -126,6 +126,21 @@ suspended" on all three); the travel board, flashed, logs the banner. Seen on th
 over "No sensor data", bold titles and trend labels fine. Not yet seen:
 the page with live data.
 
+## "No sensor data since 13:40"
+
+2026-11-21: the panel showed "No sensor data (3 min)" during a gap of 15
+minutes or more. The age was that of `lastConduitUpdateServerDateTime`, the
+phone's last upload, and the phone keeps uploading without a glucose value
+through a sensor gap. All three now show the time of the upload that last
+carried a reading ("No sensor data since 13:40"; "for 2 days" past a day),
+carried across polls like the bracketed value; with none seen since start,
+plain "No sensor data". Firmware 0.7-arduino. Checked: the desktop `Model`
+gives "since" with the right clock time for a made-up gap of 25 minutes,
+"for 2 days" for one of 2 days, and plain text with no reading seen; the
+page's script passes `node --check`; the firmware compiles (`huge_app`, 41%
+of flash). Not yet done: flashing a board, and any of the three during a real
+sensor gap.
+
 ## The WiFi watchdog's radio cycle
 
 2026-11-20 on a staging set on WiFi only: the router's 2.4 GHz channel

@@ -323,13 +323,25 @@ void draw_main_screen(LovyanGFX &g, const State &s, const Config &c) {
     }
   } else if (pump_says_why) {
     snprintf(banner_buf, sizeof(banner_buf), "%s", s.banner);
-  } else if (s.link == LINK_NO_SENSOR && reading_age_s(s) >= 0) {
-    // With its age: "No sensor data" is not proof the proxy is fetching NOW.
-    // A proxy stuck during a sensor gap would show it forever; the age keeps
-    // counting either way, so a few minutes reads as routine and hours do not.
-    char age[24];
-    age_txt(reading_age_s(s), age, sizeof(age));
-    snprintf(banner_buf, sizeof(banner_buf), "%s (%s)", link_text(s.link), age);
+  } else if (s.link == LINK_NO_SENSOR && s.lastGoodAt && time(nullptr) >= 1600000000) {
+    // Since when there has been no glucose value: the time of the last
+    // reading, so a few minutes reads as routine and hours do not. Not the
+    // age of the last upload, which this showed before: the phone keeps
+    // uploading without a glucose value through a sensor gap, so that age
+    // stayed under 5 minutes however long the gap lasted, and read as
+    // "missing for 3 min" after 15 and more. Past a day a clock time is
+    // ambiguous, so it says how long instead.
+    long gap = (long)(time(nullptr) - s.lastGoodAt);
+    if (gap < 24 * 3600) {
+      struct tm at;
+      local_tm(s.lastGoodAt, c.timezone, s.dstDelta, at);
+      snprintf(banner_buf, sizeof(banner_buf), "%s since %02d:%02d",
+               link_text(s.link), at.tm_hour, at.tm_min);
+    } else {
+      char age[24];
+      age_txt(gap, age, sizeof(age));
+      snprintf(banner_buf, sizeof(banner_buf), "%s for %s", link_text(s.link), age);
+    }
   } else if (s.link != LINK_OK) {
     snprintf(banner_buf, sizeof(banner_buf), "%s", link_text(s.link));
   } else if (reading_age_s(s) >= STALE_READING_S) {

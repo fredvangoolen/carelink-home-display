@@ -881,7 +881,8 @@ static void dump_state(const State &s, const Config &c) {
   // matters most.
   Serial.printf("  device batt   %d mV (lib says %d%%), step %d\n",
                 last_batt_mv, (int)M5.Power.getBatteryLevel(), s.battState);
-  Serial.printf("  last good sg  %d mg/dL\n", s.lastGoodSg);
+  Serial.printf("  last good sg  %d mg/dL, %ld s ago\n", s.lastGoodSg,
+                s.lastGoodAt ? (long)(time(nullptr) - s.lastGoodAt) : -1L);
   Serial.printf("  haveData      %d\n", (int)s.haveData);
   Serial.printf("  sg            %d mg/dL   trend %s\n", s.sg, s.trend);
   Serial.printf("  activeInsulin %.1f U\n", s.activeInsulin);
@@ -1158,7 +1159,7 @@ static void arm_toggle_wake() {
 //
 // A plain struct, where MicroPython had to serialise JSON in and out of RTC
 // memory and re-hydrate it - about 120 lines that simply do not exist here.
-#define RTC_MAGIC 0x4D4D030Fu   // bump when the layout changes (trend readings in State)
+#define RTC_MAGIC 0x4D4D0310u   // bump when the layout changes (lastGoodAt in State)
 
 struct RtcState {
   uint32_t magic;
@@ -1745,6 +1746,7 @@ void setup() {
     // actually draw; computing it next to the assignment to rtc.snap printed
     // a stale 0 on the very cycle it was being established.
     s.lastGoodSg = s.sg > 0 ? s.sg : rtc.snap.lastGoodSg;
+    s.lastGoodAt = (s.sg > 0 && s.lastUpdate) ? s.lastUpdate : rtc.snap.lastGoodAt;
     // Same again for the trend: one failed trend request must not blank the
     // screen. Its own end time keeps it honest - an old trend just stops
     // short of the right edge.

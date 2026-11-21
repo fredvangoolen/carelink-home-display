@@ -53,7 +53,7 @@ const ARROWS = {
 const $ = (id) => document.getElementById(id);
 
 const model = {
-  state: null, link: LINK.OK, failStreak: 0, skew: 0, lastGoodSg: 0,
+  state: null, link: LINK.OK, failStreak: 0, skew: 0, lastGoodSg: 0, lastGoodAt: 0,
   lastPoll: null, answer: "-", raw: "", trend: null, lastGoodStats: null,
 };
 let audio = null, alarmKey = null, alarmSounded = 0, pollTimer = null, polling = false, rawShown = null;
@@ -242,7 +242,10 @@ async function pollOnce() {
     } else {
       model.state = parse(doc);
       model.link = model.state.sg > 0 ? LINK.OK : LINK.NO_SENSOR;
-      if (model.state.sg > 0) model.lastGoodSg = model.state.sg;
+      if (model.state.sg > 0) {
+        model.lastGoodSg = model.state.sg;
+        if (model.state.lastUpdate) model.lastGoodAt = model.state.lastUpdate;
+      }
       // The 24-hour shares must add up to 100; while the phone is offline
       // CareLink sends timeInRange 0 with the others unchanged. Such a set is
       // ignored and the last good one shown, as on the display; 100 - above
@@ -279,7 +282,14 @@ function banner() {
   // "No sensor data", which only restates it.
   const s = model.state;
   if (model.link === LINK.NO_SENSOR && s && s.banner && s.pumpInRange === true) return [s.banner, "pump"];
-  if (model.link === LINK.NO_SENSOR && ag !== null) return [LINK_TEXT[model.link] + " (" + ageText(ag) + ")", "link"];
+  // Since when there has been no glucose value, from the last reading, not
+  // the last upload: the phone keeps uploading without one through a sensor
+  // gap, so that age stayed under 5 minutes however long the gap lasted.
+  // Past a day a clock time is ambiguous, so it says how long instead.
+  if (model.link === LINK.NO_SENSOR && model.lastGoodAt) {
+    const gap = Math.max(0, now() - model.lastGoodAt);
+    return [LINK_TEXT[model.link] + (gap < 24 * 3600 ? " since " + hhmm(model.lastGoodAt) : " for " + ageText(gap)), "link"];
+  }
   if (model.link !== LINK.OK) return [LINK_TEXT[model.link], "link"];
   if (ag !== null && ag >= STALE_READING_S) return ["No new reading for " + ageText(ag), "stale"];
   if (model.state && model.state.banner) return [model.state.banner, "pump"];

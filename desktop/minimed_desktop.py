@@ -390,7 +390,8 @@ class Model:
         self.fail_streak = 0
         self.skew = 0.0            # proxy clock minus this computer's clock
         self.last_good_sg = 0
-        self.last_poll = None      # local time of the last poll, for the status line
+        self.last_good_at = 0      # epoch of the upload that carried last_good_sg; 0 = none seen
+        self.last_poll = None     # local time of the last poll, for the status line
         self.raw = ""
         self.reply = None
         self.trend = None          # last good /carelink/trend, kept across a failed fetch
@@ -419,6 +420,8 @@ class Model:
         self.state = state
         if state and state["sg"] > 0:
             self.last_good_sg = state["sg"]
+            if state["lastUpdate"]:
+                self.last_good_at = state["lastUpdate"]
         if trend:
             self.trend = trend
         if state and min(state["stats"]) >= 0:
@@ -451,10 +454,17 @@ class Model:
         if (self.link == LINK_NO_SENSOR and self.state and self.state["banner"]
                 and self.state["pumpInRange"] is True):
             return self.state["banner"], "pump"
-        if self.link == LINK_NO_SENSOR and age is not None:
-            # With its age: "no sensor data" is not proof the proxy is
-            # fetching now. Minutes read as routine, hours do not.
-            return "%s (%s)" % (LINK_TEXT[self.link], age_text(age)), "link"
+        if self.link == LINK_NO_SENSOR and self.last_good_at:
+            # Since when there has been no glucose value, from the last
+            # reading, not from the last upload: the phone keeps uploading
+            # without one through a sensor gap, so that age stayed under 5
+            # minutes however long the gap lasted. Past a day a clock time is
+            # ambiguous, so it says how long instead.
+            gap = max(0.0, self.now() - self.last_good_at)
+            if gap < 24 * 3600:
+                since = time.strftime("%H:%M", time.localtime(self.last_good_at))
+                return "%s since %s" % (LINK_TEXT[self.link], since), "link"
+            return "%s for %s" % (LINK_TEXT[self.link], age_text(gap)), "link"
         if self.link != LINK_OK:
             return LINK_TEXT[self.link], "link"
         if age is not None and age >= STALE_READING_S:
