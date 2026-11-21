@@ -87,6 +87,9 @@ different metrics to C++ than through its MicroPython binding — DejaVu72 is
 50 px there and 75 px here — so layout constants must not be copied between
 the builds. See README.md.
 
+Which message the main screen's bottom strip shows, and why, is written up
+in [docs/display-messages.md](../../docs/display-messages.md).
+
 ### `faults.cpp`
 
 Generated from `main_m5coreink.py`'s `faultIdMapping` (137 entries) and

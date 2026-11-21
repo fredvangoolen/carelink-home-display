@@ -213,7 +213,7 @@ onderbreking nooit te zien is.
 
 | Er staat | Betekent | Wat doe je |
 |---|---|---|
-| *No sensor data* | de sensor, de pomp of de telefoon van de patiënt stuurt niets | niets, het lost zichzelf op. Duurt het lang, kijk dan de telefoon van de patiënt na |
+| *No sensor data since 13:40* | de sensor, de pomp of de telefoon van de patiënt heeft sinds dat uur geen meting gestuurd | niets, het lost zichzelf op. Duurt het lang, kijk dan de telefoon van de patiënt na |
 | *Pump suspended* (of een andere melding van de pomp) | de pomp zegt zelf waarom er geen meting is, bijvoorbeeld omdat ze losgekoppeld of gepauzeerd is; dit vervangt *No sensor data* | niets, tenzij het langer duurt dan verwacht |
 | *No new reading for …* | alles antwoordt, maar de meting verandert niet | kijk de telefoon van de patiënt en de MiniMed-app na |
 | *Proxy has no data* | het kastje bereikt CareLink niet | kijk na of je internet werkt; het kastje probeert het elke minuut opnieuw |

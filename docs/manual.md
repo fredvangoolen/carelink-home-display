@@ -200,7 +200,7 @@ says why. It appears only after about 15 minutes, so a short gap never shows.
 
 | The line says | Means | What to do |
 |---|---|---|
-| *No sensor data* | the sensor, the pump or the patient's phone is not sending | nothing; it clears itself. If it lasts, check the patient's phone |
+| *No sensor data since 13:40* | the sensor, the pump or the patient's phone has not sent a reading since that time | nothing; it clears itself. If it lasts, check the patient's phone |
 | *Pump suspended* (or another pump message) | the pump says why there is no reading, for example it is disconnected; this replaces *No sensor data* | nothing, unless it lasts longer than expected |
 | *No new reading for …* | everything answers, but the reading has not changed | check the patient's phone and its MiniMed app |
 | *Proxy has no data* | the box cannot reach CareLink | check that your internet works; the box tries again every minute |

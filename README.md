@@ -72,6 +72,9 @@ proxy settings (choose *do not erase*). The page always carries the
 - [desktop/README.md](desktop/README.md) — the display's main screen in a
   window on Windows, macOS or Linux, for a caregiver's computer and for
   debugging; and the proxy's live page at `http://<pi>:8081/display`.
+- [docs/display-messages.md](docs/display-messages.md) — every message the
+  display can show, which one wins, what triggers it and when it clears;
+  the rules the display, the desktop app and the live page share.
 - [docs/lessons.md](docs/lessons.md) — things that cost a day to find out.
 - [docs/testing.md](docs/testing.md) — test builds, what is verified on
   hardware, and what is still untested.

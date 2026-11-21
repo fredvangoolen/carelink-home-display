@@ -52,6 +52,8 @@ data since HH:MM" from the upload that last carried a reading (not from
 gap), "for N days" past a day; DELIVERY_SUSPEND
 reads "Pump suspended"; the 24-hour shares used only when they add up to
 100 (within 2), else the last good set. Change them in all three or none.
+`docs/display-messages.md` describes the messages and their order; keep it
+in step.
 
 Plan A / plan B (docs/travel.md) spans firmware slot 2, `appliance/travel-ap/`
 and that endpoint. Document it as one feature, in `docs/travel.md`.

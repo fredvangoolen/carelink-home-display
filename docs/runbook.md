@@ -313,7 +313,7 @@ Two things say which link in the chain pump → phone → CareLink → proxy →
 | *CareLink login needed* | the token: CareLink refused it | *Valid token required*; *refused the token refresh* means a renewal is needed |
 | *No link to proxy* | the Pi is down, or the display cannot reach it | the page does not open either, or it does and the WiFi is the problem: check the Signal row on *Device & Network* |
 
-A message appears only after about 15 minutes, so a short gap never shows. On the bench, the serial log's `comms` line has the same chain in raw form (pump-phone, phone-cloud, the proxy's answer, the failure streak and the proxy address).
+A message appears only after about 15 minutes, so a short gap never shows. [display-messages.md](display-messages.md) has every message, which one wins, and when each clears. On the bench, the serial log's `comms` line has the same chain in raw form (pump-phone, phone-cloud, the proxy's answer, the failure streak and the proxy address).
 
 ### Symptoms
 
@@ -321,7 +321,7 @@ A message appears only after about 15 minutes, so a short gap never shows. On th
 | --- | --- | --- |
 | Display time is old, proxy is fine | Core Ink cannot reach the Pi | Check the Signal row on the display, mDNS from the LAN, and whether the household WiFi changed |
 | Display frozen on the version splash | Power supply cannot carry the WiFi inrush | Replace the adapter. It is not software |
-| Display reads *No data*, proxy returns `sg: 0` | Pump is not reaching the cloud | Nothing to fix. Phone, range, or Medtronic |
+| Display shows *---* and *No sensor data since …*, proxy returns `sg: 0` | Pump is not reaching the cloud | Nothing to fix. Phone, range, or Medtronic |
 | Proxy page says *Valid token required* | CareLink refused the token. The line under it says since when and why; *refused the token refresh* means the session is over, most often because the same account was signed in somewhere else | Schedule a renewal call with the household. The proxy retries the stored token by itself after 1 minute, then doubling up to every 30, so a token that was only refused once comes back without help |
 | Proxy page says *Logged in, but no data from CareLink* | The Pi cannot reach CareLink: no internet, DNS, or a CareLink outage. Common right after a power cut, when the router is slower than the Pi | Nothing to renew. The proxy retries every minute and the data is back within a minute of the network. Check the Pi's own connection (`ping -c3 clcloud.minimed.eu`) |
 | Proxy active, 401/403 in the journal | Token rejected upstream | Same — renewal |
