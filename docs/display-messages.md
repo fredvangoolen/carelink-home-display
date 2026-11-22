@@ -46,6 +46,15 @@ Everything except the alarm texts (from `faults.cpp`) and the pump banners
 | *Pump suspended* | Plain words for the pump banner `DELIVERY_SUSPEND`, the only pump banner reworded. Others show as CareLink names them, underscores turned into spaces | Wherever a pump banner shows |
 | *Unknown error code nnn* | A `faultId` missing from the fault table. Still an alarm, still beeps | Rule 1 |
 
+### When CareLink says "no data" but has readings
+
+CareLink sometimes sends `lastSG` as an entry with `sg 0` and
+`NO_DATA_FROM_PUMP` while real readings keep arriving in its history. The
+proxy then serves the newest of those readings, if it is at most 10 minutes
+old, so the displays show it and not *No sensor data*
+([carelink-api.md](carelink-api.md), at the end). A real outage still shows:
+once no new reading has come for 10 minutes, the entry passes through.
+
 ### Why "since", not an age
 
 The time comes from the last upload that carried a glucose value, kept from

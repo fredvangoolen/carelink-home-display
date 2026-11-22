@@ -28,6 +28,9 @@ JSON shape is a breaking change for the other side — change both or neither.
 
 - `GET /carelink/nohistory` — current pump data. If a field changes and the
   display breaks, look at the real response with `curl`; do not assume.
+  One field is not as CareLink sent it: when `lastSG` is a `NO_DATA_FROM_PUMP`
+  entry and `sgs` has a real reading at most 10 minutes older, that reading
+  is served as `lastSG` (docs/carelink-api.md, at the end).
 - `GET /carelink/trend` — the last 3 hours for the trend screen:
   `{"end": "<local timestamp>", "step": 300, "sg": [36 values, oldest first,
   0 = none]}`, or 404. `end` is local wall clock, read like

@@ -182,6 +182,9 @@ def get_essential_data(data):
    # here) left the display waiting 30 s for a reply, twice (2026-11-14).
    if isinstance(data, dict) and isinstance(data.get("patientData"), dict):
       mydata = data["patientData"].copy()
+      filled = last_sg_from_history(data["patientData"])
+      if filled:
+         mydata["lastSG"] = filled
       try:
          del mydata["sgs"]
       except (KeyError,TypeError) as e:
@@ -231,6 +234,56 @@ def parse_local(stamp):
       return calendar.timegm(time.strptime(stamp[:19], "%Y-%m-%dT%H:%M:%S"))
    except (TypeError, ValueError):
       return None
+
+
+# How old the newest real reading may be, against the marker, to stand in
+# for it. Two upload cycles: a marker that keeps coming without new readings
+# is a real gap after that, and the displays say so.
+LAST_SG_FILL_MAX_S = 10 * 60
+g_fill_logged = None        # lastSG timestamp last logged as filled
+
+
+def last_sg_from_history(pd):
+   # lastSG as the newest real reading in sgs, or None to leave it alone.
+   #
+   # Seen 2026-11-21 and -22 on both Pis: for up to an hour, nearly every
+   # upload ended sgs with an off-grid entry three minutes after the newest
+   # reading - sg 0, sensorState NO_DATA_FROM_PUMP - and lastSG was that
+   # entry, while the readings before it kept coming every 5 minutes. The
+   # displays read lastSG, so they showed "---" and "No sensor data" through
+   # a rise from 119 to 214. Only that sensorState is replaced: warm-up, a
+   # sensor error or calibration are real reasons for no value. Both stamps
+   # are local wall clock (see parse_local), so no time zone is involved.
+   global g_fill_logged
+   last = pd.get("lastSG")
+   if not isinstance(last, dict) or last.get("sensorState") != "NO_DATA_FROM_PUMP":
+      return None
+   if isinstance(last.get("sg"), (int, float)) and last["sg"] > 0:
+      return None
+   marker_t = parse_local(last.get("timestamp"))
+   sgs = pd.get("sgs")
+   if marker_t is None or not isinstance(sgs, list):
+      return None
+   newest = None
+   for e in sgs:
+      if not isinstance(e, dict):
+         continue
+      sg = e.get("sg")
+      t = parse_local(e.get("timestamp"))
+      if t is None or not isinstance(sg, (int, float)) or sg <= 0:
+         continue
+      if newest is None or t > newest[0]:
+         newest = (t, e)
+   if newest is None or not 0 <= marker_t - newest[0] <= LAST_SG_FILL_MAX_S:
+      return None
+   t, e = newest
+   filled = {k: e[k] for k in ("kind", "version", "sg", "sensorState", "timestamp") if k in e}
+   filled["filledFrom"] = "sgs"     # for whoever reads the JSON by hand
+   if g_fill_logged != last.get("timestamp"):
+      g_fill_logged = last.get("timestamp")
+      log.info("lastSG was NO_DATA_FROM_PUMP at %s; serving the reading %s from %s instead"
+               % (last.get("timestamp"), e.get("sg"), e.get("timestamp")))
+   return filled
 
 
 def get_trend_data(data):

@@ -160,6 +160,20 @@ compiles and runs on a board (2026-11-21). Not yet done: an alarm followed
 by a stopped proxy, which should show "No link to proxy" in place of the
 alarm from the third failed poll on.
 
+## `lastSG` filled from the history
+
+2026-11-22: CareLink sent `lastSG` as `sg 0`, `NO_DATA_FROM_PUMP` while
+real readings kept arriving in `sgs`; both boards showed "---" and *No
+sensor data* through a rise from 119 to 214 the night before. A logger on
+the reference Pi (every 150 s from 2026-11-21 23:00) saw it about once an
+hour for one upload, and for 35 minutes from 12:14. The proxy now serves
+the newest real reading as `lastSG` in `nohistory`, if it is at most 10
+minutes older than the entry. Checked: against a live answer and nine
+made-up cases (3 and 10 minutes: filled; 11 minutes, `WARM_UP`, no `sgs`,
+only zeros, a reading newer than the entry, a bad stamp: left alone; a real
+reading untouched; an empty answer still `""`). Not yet seen: on a Pi
+during a real episode.
+
 ## The WiFi watchdog's radio cycle
 
 2026-11-20 on a staging set on WiFi only: the router's 2.4 GHz channel

@@ -103,3 +103,23 @@ https://github.com/benceszasz/CareLinkJavaClient
 | therapyAlgorithmState/autoModeShieldState | "FEATURE_OFF","AUTO_BASAL","SAFE_BASAL" (when waiting for calibration) |
 | therapyAlgorithmState/safeBasalDuration   | minutes to exit from auto                                    |
 
+### `lastSG` can be a "no data" entry while readings keep coming
+
+Seen 2026-11-21 (an hour) and 2026-11-22 (35 minutes, and for a single
+upload about once an hour in between), on two proxies with the same patient:
+`sgs` kept getting real readings every 5 minutes (`NO_ERROR_MESSAGE`,
+`isBackfill: false`), but ended with an extra entry off the 5-minute grid,
+about three minutes after the newest reading:
+
+```
+{"sg": 0, "sensorState": "NO_DATA_FROM_PUMP", "timestamp": "2026-11-22T12:41:01"}
+```
+
+and `lastSG` was that entry. Pump and phone both reported in range;
+`lastSGTrend` was `NONE`. Anything that reads `lastSG` alone shows no reading
+while the glucose is known. The proxy therefore serves, in `nohistory` only,
+the newest real `sgs` reading as `lastSG` (with `"filledFrom": "sgs"`) when
+`lastSG` has this `sensorState` and that reading is at most 10 minutes older
+than it (`last_sg_from_history()`). `/carelink` stays as CareLink sent it.
+Cause on the pump or phone side unknown.
+
