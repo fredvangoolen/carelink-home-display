@@ -3,7 +3,7 @@
   <title id="t">How the display gets its numbers</title>
   <desc id="d">The pump sends its readings by Bluetooth to the patient's
   phone, the phone sends them over the internet to Medtronic's CareLink, and
-  a small box in your home fetches them from CareLink every five minutes and
+  a small computer in your home, the gateway, fetches them from CareLink every five minutes and
   passes them to the display.</desc>
 
   <defs>
@@ -56,12 +56,12 @@
     <circle cx="20" cy="50" r="5" fill="#2f855a"/>
     <rect x="58" y="22" width="30" height="26" rx="3" fill="#ffffff" stroke="#6b7680" stroke-width="1.2"/>
   </g>
-  <text x="690" y="285" font-size="17" fill="#1f2933" text-anchor="middle">The box</text>
+  <text x="690" y="285" font-size="17" fill="#1f2933" text-anchor="middle">Gateway</text>
   <text x="690" y="306" font-size="14" fill="#5b6470" text-anchor="middle">a Raspberry Pi</text>
 
   <path d="M578 185 H632" stroke="#c2410c" stroke-width="3" fill="none" marker-end="url(#a)"/>
-  <text x="606" y="158" font-size="13" fill="#5b6470" text-anchor="middle">every</text>
-  <text x="606" y="174" font-size="13" fill="#5b6470" text-anchor="middle">5 min</text>
+  <text x="606" y="151" font-size="13" fill="#5b6470" text-anchor="middle">every</text>
+  <text x="606" y="167" font-size="13" fill="#5b6470" text-anchor="middle">5 min</text>
 
   <!-- display -->
   <g transform="translate(840 125)">

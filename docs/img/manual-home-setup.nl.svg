@@ -1,9 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 470" width="1000" height="470"
      font-family="Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
   <title id="t">De set bij jou thuis</title>
-  <desc id="d">Het kastje, een Raspberry Pi, staat naast je internetmodem en zit
+  <desc id="d">De gateway, een Raspberry Pi, staat naast je internetmodem en zit
   met een kabel in een van de vrije netwerkaansluitingen, en in een stopcontact.
-  Het scherm staat op een plek waar je vaak langskomt, zoals de keuken, op zijn
+  Het display staat op een plek waar je vaak langskomt, zoals de keuken, op zijn
   eigen USB-lader, en maakt via je wifi verbinding met de modem.</desc>
 
   <defs>
@@ -50,7 +50,7 @@
     <circle cx="20" cy="42" r="5" fill="#2f855a"/>
     <rect x="64" y="16" width="32" height="26" rx="3" fill="#ffffff" stroke="#6b7680" stroke-width="1.2"/>
   </g>
-  <text x="135" y="410" font-size="15" fill="#1f2933" text-anchor="middle">Het kastje (Raspberry Pi)</text>
+  <text x="135" y="410" font-size="15" fill="#1f2933" text-anchor="middle">De gateway (Raspberry Pi)</text>
 
   <!-- Pi power -->
   <path d="M190 365 C 240 365, 260 365, 300 365" stroke="#2b2f33" stroke-width="3" fill="none"/>
@@ -78,7 +78,7 @@
     <path d="M100 62 h13 v-7 l12 11 l-12 11 v-7 h-13 z" fill="#1f2933"/>
     <text x="75" y="116" font-size="12" fill="#1f2933" text-anchor="middle">3 min ago</text>
   </g>
-  <text x="715" y="280" font-size="17" fill="#1f2933" text-anchor="middle">Het scherm</text>
+  <text x="715" y="280" font-size="17" fill="#1f2933" text-anchor="middle">Het display</text>
 
   <!-- display power -->
   <path d="M775 252 C 778 310, 810 335, 840 348" stroke="#2b2f33" stroke-width="3" fill="none"/>
@@ -89,5 +89,5 @@
   <text x="862" y="392" font-size="14" fill="#5b6470" text-anchor="middle">een goede USB-lader,</text>
   <text x="862" y="410" font-size="14" fill="#5b6470" text-anchor="middle">niet de USB van een computer</text>
 
-  <text x="500" y="455" font-size="15" fill="#5b6470" text-anchor="middle">Geen vrije aansluiting op de modem? Dan kan het kastje ook via de wifi; je helper regelt dat.</text>
+  <text x="500" y="455" font-size="15" fill="#5b6470" text-anchor="middle">Geen vrije aansluiting op de modem? Dan kan de gateway ook via de wifi; je helper regelt dat.</text>
 </svg>

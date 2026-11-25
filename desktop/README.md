@@ -2,7 +2,7 @@
 
 The display's *Glucose* and *Trend* screens in one window on an ordinary computer: Windows,
 macOS or Linux. It reads the same proxy as the Core Ink display, so it needs
-the box (the Pi) on the same network.
+the gateway (the Pi) on the same network.
 
 Use it as a backup when there is no display at hand, a second screen on the
 patient's own desk, or a debugging aid: it shows exactly what the proxy
@@ -25,7 +25,7 @@ Only Python 3.8 or newer, with Tk. Nothing to `pip install`.
 
 Copy this whole `desktop/` directory: the program needs `faults.py` next to
 it. On first start it asks for the proxy's address (the name or IP address
-of the box, for example `carelink-01` or `192.168.1.20`; the port defaults
+of the gateway, for example `carelink-01` or `192.168.1.20`; the port defaults
 to 8081). It remembers it, and the *Keep on top* setting, in:
 
 - Windows: `%APPDATA%\carelink-monitor\config.json`

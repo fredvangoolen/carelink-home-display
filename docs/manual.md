@@ -19,16 +19,16 @@ This guide has three parts:
 
 ### How it works
 
-![The pump sends its readings to the patient's phone, the phone to Medtronic's CareLink, and a small box in your home fetches them every five minutes and passes them to the display](img/manual-how-it-works.svg)
+![The pump sends its readings to the patient's phone, the phone to Medtronic's CareLink, and a small computer in your home, the gateway, fetches them every five minutes and passes them to the display](img/manual-how-it-works.svg)
 
 The pump already sends its readings to the patient's phone, and the phone
 sends them to CareLink, Medtronic's online service. The set adds two things
 in **your** home:
 
-- **The box**, a small computer (a Raspberry Pi) next to your internet
+- **The gateway**, a small computer (a Raspberry Pi) next to your internet
   router. Every five minutes it fetches the latest reading from CareLink.
 - **The display**, a small e-paper screen, about 3 by 3 cm. Every five minutes
-  it wakes up, takes the reading from the box over your WiFi, shows it, and
+  it wakes up, takes the reading from the gateway over your WiFi, shows it, and
   beeps when the pump has an alarm.
 
 The patient does not need to be at home: the display works wherever they
@@ -41,7 +41,7 @@ are, as long as their phone is on, near the pump and online.
 - **It is not a medical device and not an alarm system.** The pump and the
   phone remain the things that warn. The display puts the same numbers in
   another room.
-- **It is always a few minutes behind.** The pump, the box and the display
+- **It is always a few minutes behind.** The pump, the gateway and the display
   each work in steps of five minutes.
 - **It depends on the patient's phone.** When the phone is off, too far from
   the pump or offline, the display says so; that is not a fault of the set.
@@ -50,30 +50,30 @@ are, as long as their phone is on, near the pump and online.
 
 | You need | |
 |---|---|
-| **The two devices** | the box and the display, prepared by your helper (part 2) |
-| **Internet at home** | a router with **one free network socket** for the box. No free socket: the box can use your WiFi instead |
+| **The two devices** | the gateway and the display, prepared by your helper (part 2) |
+| **Internet at home** | a router with **one free network socket** for the gateway. No free socket: the gateway can use your WiFi instead |
 | **Your WiFi name and password** | the display connects to your WiFi. It needs the 2.4 GHz kind, which almost every home router offers, often under the same name |
 | **A separate CareLink account for the display** | see below |
-| **Two power sockets** | one near the router for the box, one where the display goes |
+| **Two power sockets** | one near the router for the gateway, one where the display goes |
 | **A helper with a technical background** | to prepare the devices and install them with you, about 45 minutes in your home |
 
 ### A separate CareLink account, accepted by the patient
 
-The box signs in to CareLink with an account of its own: a **care-partner
+The gateway signs in to CareLink with an account of its own: a **care-partner
 account**. It is an ordinary CareLink account, made for this display only,
 that the **patient invites as a care partner** from their own CareLink
-account, and that accepts the invitation. This is what allows the box to
+account, and that accepts the invitation. This is what allows the gateway to
 read the patient's data.
 
 Why a separate account:
 
 - **The patient stays in control.** Removing the care partner in their own
   account switches the display off, without changing their own password.
-- **It is safer.** The box holds only this account's sign-in, which can read
+- **It is safer.** The gateway holds only this account's sign-in, which can read
   one patient's data and nothing more.
 - **It must not be used anywhere else.** A care-partner account can be
   signed in at one place only. Signing in with it on a phone, or in a second
-  box, stops the display a few hours later.
+  gateway, stops the display a few hours later.
 
 Whoever owns that account keeps its **password and the device that receives
 its two-factor code** (the extra code CareLink asks for at sign-in) at hand. They are needed
@@ -118,7 +118,7 @@ You do not need to be a programmer. You do need to be comfortable with:
 | Item | Notes |
 |---|---|
 | M5Stack Core Ink | the display |
-| Raspberry Pi 4 | the box; the model this is tested on |
+| Raspberry Pi 4 | the gateway; the model this is tested on |
 | microSD card, 16 GB or more | for the Pi |
 | Raspberry Pi power adapter | the official one: a weak adapter causes faults that look like software problems |
 | Network cable | from the router to the Pi |
@@ -132,36 +132,36 @@ Open it in Chrome or Edge on a laptop, connect the Core Ink with a USB-C
 cable, press *Install*. Choose *Erase* for a new display or one that goes to
 another household; choose *Do not erase* to update a display in use.
 
-The display's WiFi and the address of the box are filled in later, in the
+The display's WiFi and the address of the gateway are filled in later, in the
 home: a wiped display shows a QR code that leads a phone to its setup page.
 
-### The box: prepare it on your desk
+### The gateway: prepare it on your desk
 
 Done on your own desk before the visit, about an hour the first time:
 
 1. Write Raspberry Pi OS Lite to the memory card with Raspberry Pi Imager,
-   with a name for the box (`carelink-<name>`) and your SSH key.
+   with a name for the gateway (`carelink-<name>`) and your SSH key.
 2. Log in to it from your laptop and run one script, which installs
    everything: `appliance/provision.sh`.
 3. Choose the password for the sign-in screen (the VNC password), print the
    label for its setup hotspot, and link it to Raspberry Pi Connect for
    remote help.
 
-The box does **not** sign in to CareLink on your desk. That happens in the
-home, with the care-partner account, once the box is on the home network.
+The gateway does **not** sign in to CareLink on your desk. That happens in the
+home, with the care-partner account, once the gateway is on the home network.
 
 ### The visit
 
 About 45 minutes, following the [home installation
-checklist](home-installation-checklist.md): connect the box, let the account
+checklist](home-installation-checklist.md): connect the gateway, let the account
 holder sign in to CareLink on a laptop, set up the display from a phone, find
 it a good spot, and check that a current reading arrives.
 
 ## 3. The set in your home
 
-![The box next to the router, plugged into a free network socket and a power socket; the display in the kitchen on its own charger, connected over the home WiFi](img/manual-home-setup.svg)
+![The gateway next to the router, plugged into a free network socket and a power socket; the display in the kitchen on its own charger, connected over the home WiFi](img/manual-home-setup.svg)
 
-- **The box** sits next to your internet router, with a network cable in a
+- **The gateway** sits next to your internet router, with a network cable in a
   free socket of the router, and its own power adapter. It has no screen and
   needs nothing from you.
 - **The display** goes somewhere people pass by, such as the kitchen or the
@@ -204,15 +204,15 @@ says why. It appears only after about 15 minutes, so a short gap never shows.
 | *No sensor data since 13:40* | the sensor, the pump or the patient's phone has not sent a reading since that time | nothing; it clears itself. If it lasts, check the patient's phone |
 | *Pump suspended* (or another pump message) | the pump says why there is no reading, for example it is disconnected; this replaces *No sensor data* | nothing, unless it lasts longer than expected |
 | *No new reading for …* | everything answers, but the reading has not changed | check the patient's phone and its MiniMed app |
-| *Proxy has no data* | the box cannot reach CareLink | check that your internet works; the box tries again every minute |
+| *Proxy has no data* | the gateway cannot reach CareLink | check that your internet works; the gateway tries again every minute |
 | *CareLink login needed* | CareLink wants a new sign-in | call your helper (see below) |
-| *No link to proxy* | the display cannot reach the box | check that the box has power and its cable; then restart both (below) |
+| *No link to proxy* | the display cannot reach the gateway | check that the gateway has power and its cable; then restart both (below) |
 
-("Proxy" is the box.)
+("Proxy" is the gateway.)
 
 ### When it seems stuck
 
-1. Unplug **both** the box and the display.
+1. Unplug **both** the gateway and the display.
 2. Wait 10 seconds and plug them back in.
 3. Wait 5 minutes.
 
@@ -236,7 +236,7 @@ Three things look like faults and are not:
 
 ### Taking it on holiday
 
-The set can travel along: the box and the display find each other in a
+The set can travel along: the gateway and the display find each other in a
 holiday home too, even on WiFi that would normally keep them apart. Ask your
 helper before you go; the details are in [travel.md](travel.md).
 
@@ -246,14 +246,14 @@ The same *Glucose* screen can also run in a window on a computer in the
 house: as a backup when the display is away, or on the patient's own desk.
 Your helper installs it (instructions in
 [desktop/README.md](../desktop/README.md)); it needs Python, which is free,
-and the box's address. *Monitor → Test sound* lets you hear the alarm tone.
+and the gateway's address. *Monitor → Test sound* lets you hear the alarm tone.
 It shows the same messages as the table above, but only while the computer
 is on and awake: a sleeping computer shows nothing. Its chart shows the last
 12 hours; click it, or *3 h* above it, for 3. The page below works the same
 way.
 
 For a quick look from any computer or phone at home there is also a page in
-the browser: `http://` followed by the box's name and `:8081/display`, for
+the browser: `http://` followed by the gateway's name and `:8081/display`, for
 example `http://carelink-01:8081/display`. It is meant for a glance and for
 your helper's troubleshooting, not for keeping open as a monitor: a browser
 plays no sound until you click *Enable alarm sound*, and stops when the

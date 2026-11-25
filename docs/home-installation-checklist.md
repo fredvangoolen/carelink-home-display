@@ -9,7 +9,7 @@ What to do in the patient's home with a set staged on the bench. The Pi is provi
 Check these by phone or message beforehand. Without any one of them, the visit ends half done.
 
 - [ ] **Home WiFi credentials.** The network name and password. The display needs a 2.4 GHz network, so ask whether the router offers one (most do, often under the same name).
-- [ ] **A free Ethernet port on the ISP gateway**, with room for the Pi and a power socket next to it. Without one, the Pi goes on the household WiFi instead, through its setup hotspot (step 1).
+- [ ] **A free Ethernet port on the internet router**, with room for the Pi and a power socket next to it. Without one, the Pi goes on the household WiFi instead, through its setup hotspot (step 1).
 - [ ] **The patient's care-partner account is set up.** A CareLink account made for this set alone, invited as a care partner from the patient's own account, the invitation accepted, two-factor on. It must not be signed in anywhere else: one account carries one live session.
 - [ ] **Whoever holds that account's password and two-factor device will be there**, or reachable during the visit, to complete the sign-in.
 
@@ -22,7 +22,7 @@ Check these by phone or message beforehand. Without any one of them, the visit e
 
 ## 1. Connect the Pi
 
-1. Ethernet from the Pi to a free LAN port on the ISP gateway, then power it with its adapter.
+1. Ethernet from the Pi to a free LAN port on the internet router, then power it with its adapter.
 2. Wait 2 minutes. On connect.raspberrypi.com the Pi shows as online. Open its remote shell; everything below that says *in the shell* happens there.
 3. In the shell, note the Pi's address: `hostname -I`.
 
@@ -60,7 +60,7 @@ Check these by phone or message beforehand. Without any one of them, the visit e
 ## 4. Place the display
 
 1. Pick a spot people pass, such as the kitchen or the hallway, not a bedside.
-2. Flick the switch to *Device & Network* and wait for the next refresh, at most 5 minutes. **Signal** must read *fair* or *good*. If it reads *weak*, move the display closer to the gateway and check again.
+2. Flick the switch to *Device & Network* and wait for the next refresh, at most 5 minutes. **Signal** must read *fair* or *good*. If it reads *weak*, move the display closer to the router and check again.
 
 ## 5. Prove it
 
@@ -75,7 +75,7 @@ Check these by phone or message beforehand. Without any one of them, the visit e
 - [ ] For a renewal call they need: the link `http://carelink-<name>.local:6080/vnc.html`, the VNC password, and the care-partner account's sign-in with its two-factor code.
 - [ ] Leave the VNC password written down where they will find it in six months.
 - [ ] Show them which plug is which.
-- [ ] Note the gateway's make and model.
+- [ ] Note the router's make and model.
 
 ## If something goes wrong on site
 
@@ -83,7 +83,7 @@ Look first at the line at the bottom of the display's main screen, then at the p
 
 | You see | Do |
 | --- | --- |
-| The renewal link opens by address but not by name | The network does not pass mDNS. Give the Pi a DHCP reservation on the gateway, and enter that address on the display instead of the name |
+| The renewal link opens by address but not by name | The network does not pass mDNS. Give the Pi a DHCP reservation on the router, and enter that address on the display instead of the name |
 | *No link to proxy* on the display after 15 minutes | Check the WiFi is 2.4 GHz, and that the WiFi name and the proxy name are spelled exactly right, capitals and spaces included. To redo the setup: on *Device & Network*, hold the switch in for 5 s, choose *Yes* |
 | The display stays on the version splash | The power adapter is too weak. Replace it |
 | *CareLink login needed* | Right after a power cut or a cable change: in the shell, `sudo systemctl restart carelink2-proxy` and wait 5 minutes. Only if that does not help is the token gone: run a renewal with the care-partner account (runbook, Staging the Pi, step 5) |

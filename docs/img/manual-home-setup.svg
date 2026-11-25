@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 470" width="1000" height="470"
      font-family="Helvetica, Arial, sans-serif" role="img" aria-labelledby="t d">
   <title id="t">The set in your home</title>
-  <desc id="d">The box, a Raspberry Pi, sits next to your internet router and
+  <desc id="d">The gateway, a Raspberry Pi, sits next to your internet router and
   is plugged into one of its free network sockets with a cable, and into a
   power socket. The display stands somewhere you pass by, such as the kitchen,
   on its own USB power adapter, and connects to the router over your WiFi.</desc>
@@ -50,7 +50,7 @@
     <circle cx="20" cy="42" r="5" fill="#2f855a"/>
     <rect x="64" y="16" width="32" height="26" rx="3" fill="#ffffff" stroke="#6b7680" stroke-width="1.2"/>
   </g>
-  <text x="135" y="410" font-size="15" fill="#1f2933" text-anchor="middle">The box (Raspberry Pi)</text>
+  <text x="135" y="410" font-size="15" fill="#1f2933" text-anchor="middle">The gateway (Raspberry Pi)</text>
 
   <!-- Pi power -->
   <path d="M190 365 C 240 365, 260 365, 300 365" stroke="#2b2f33" stroke-width="3" fill="none"/>
@@ -89,5 +89,5 @@
   <text x="862" y="392" font-size="14" fill="#5b6470" text-anchor="middle">a good USB charger,</text>
   <text x="862" y="410" font-size="14" fill="#5b6470" text-anchor="middle">not a computer's USB</text>
 
-  <text x="500" y="455" font-size="15" fill="#5b6470" text-anchor="middle">No free socket on the router? The box can use the home WiFi instead; your helper sets that up.</text>
+  <text x="500" y="455" font-size="15" fill="#5b6470" text-anchor="middle">No free socket on the router? The gateway can use the home WiFi instead; your helper sets that up.</text>
 </svg>
