@@ -111,8 +111,9 @@ message at all. That is the price of the rule, and it is deliberate.
 | Big or small number | Any message in the strip shrinks the number to make room for two lines |
 | Battery icon | Hidden whenever the strip has a message: no room |
 | *Updated 4 min ago \| 09:55* | The age of the reading, then the time of this redraw. A clock that stops moving means the display itself stopped |
-| Trend screen: *No readings in 3 h* | A trend was fetched but holds no reading |
+| Trend screen: *No readings in 3 h* (or *12 h*) | A trend was fetched but holds no reading in the window shown |
 | Trend screen: *No trend from proxy* | No trend fetched since the board started |
+| Trend screen: *Proxy sends 3 h only* | The 12-hour view, with a proxy too old for `/carelink/trend12h`; the 3-hour view still works |
 
 The strip holds two lines of DejaVu 18 when the text fits, else DejaVu 12;
 anything longer is cut at the end of line two.

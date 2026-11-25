@@ -174,12 +174,13 @@ it a good spot, and check that a current reading arrives.
 ![The controls of the display and its five screens: Glucose, Trend, Statistics, Pump, and Device & Network](img/display-controls.svg)
 
 The **side switch** is the only control you need: flick it down for the next
-screen, up for the previous one.
+screen, up for the previous one. On the *Trend* screen, press it in briefly
+to see 12 hours instead of 3; press again to go back.
 
 | Screen | Shows |
 |---|---|
 | **Glucose** | the latest reading, the trend arrow, active insulin, and how long ago the reading was taken. Alarms from the pump show here, with a beep |
-| **Trend** | the last 3 hours as a line, with dashed lines at 70 and 180, a dotted line at 100 (the pump's target), and the hours along the bottom. On the display, the zones below 70 and above 180 are dotted; the clear band between them is in range. The scale stretches to fit the readings; a number at the top right shows how high it goes when a peak passes 200. The dot is the latest reading; a line that stops short of the right edge means no readings came in since |
+| **Trend** | the last 3 hours as a line (press the switch in for 12 hours, with the hours labelled every three), with dashed lines at 70 and 180, a dotted line at 100 (the pump's target), and the hours along the bottom. On the display, the zones below 70 and above 180 are dotted; the clear band between them is in range. The scale stretches to fit the readings; a number at the top right shows how high it goes when a peak passes 200. The dot is the latest reading; a line that stops short of the right edge means no readings came in since |
 | **Statistics** | the last 24 hours: time in range, above, below, and the average |
 | **Pump** | reservoir, pump battery, and sensor age |
 | **Device & Network** | the WiFi it uses and how good the signal is, and the display's own battery. Your helper may ask you to read this one out |

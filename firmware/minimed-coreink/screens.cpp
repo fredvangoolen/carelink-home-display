@@ -627,7 +627,9 @@ static const int TREND_Y_CEIL  = 400;   // ... or above 400
 static const int TREND_Y_PAD   = 10;
 static const int TREND_Y_STEP  = 20;
 static const int TREND_Y_TOP_PLAIN = 200;   // top of the narrowest scale: not labelled
-static const long TREND_WINDOW_S = (long)TREND_SLOTS * TREND_STEP_S;
+// Hour labels: every hour over 3 hours; every third hour over 12, where an
+// hour is about 14 px and "09 10 11" would run together. Ticks every hour.
+static const int TREND_LABEL_EVERY_12H = 3;
 
 // The scale for readings between lo and hi (0 = no readings).
 static void trend_scale(int lo, int hi, int &ymin, int &ymax) {
@@ -640,9 +642,15 @@ static void trend_scale(int lo, int hi, int &ymin, int &ymax) {
   ymax = b > TREND_Y_CEIL ? TREND_Y_CEIL : b;
 }
 
-void draw_trend_screen(LovyanGFX &g, const State &s, const Config &c) {
+// long12: the 12-hour view, toggled by pressing the switch in on this
+// screen; a session always arrives at the 3-hour view. Same rules for both:
+// the window ends now, and the scale is from the readings in the window.
+void draw_trend_screen(LovyanGFX &g, const State &s, const Config &c,
+                       bool long12) {
   g.fillScreen(COLOR_WHITE);
-  int top = draw_screen_header(g, "LAST 3 HOURS");
+  const int hours = long12 ? 12 : 3;
+  const long TREND_WINDOW_S = (long)hours * 3600;
+  int top = draw_screen_header(g, long12 ? "LAST 12 HOURS" : "LAST 3 HOURS");
   // Header's right side: the unit, so the scale's bare numbers mean something.
   int uw = text_width(g, "mg/dL", FONT_LABEL);
   draw_text_bold(g, "mg/dL", PANEL_W - MARGIN - uw - 1, 4, FONT_LABEL, COLOR_BLACK);
@@ -662,12 +670,15 @@ void draw_trend_screen(LovyanGFX &g, const State &s, const Config &c) {
                   : s.trendEnd;
   time_t wstart = wend - TREND_WINDOW_S;
   auto slot_time = [&](int i) {
-    return s.trendEnd - (time_t)(TREND_SLOTS - 1 - i) * TREND_STEP_S;
+    return s.trendEnd - (time_t)(TREND_SLOTS_12H - 1 - i) * TREND_STEP_S;
   };
+  // An older proxy sends 3 hours only: say so rather than draw them as if
+  // the 9 hours before had no readings.
+  const bool have = s.trendEnd && (s.trend12h || !long12);
 
   // The scale, from the readings actually in the window.
   int lo = 0, hi = 0;
-  for (int i = 0; i < TREND_SLOTS && s.trendEnd; i++) {
+  for (int i = 0; i < TREND_SLOTS_12H && have; i++) {
     int v = s.trendSg[i];
     time_t t = slot_time(i);
     if (!v || t < wstart || t > wend) continue;
@@ -733,6 +744,7 @@ void draw_trend_screen(LovyanGFX &g, const State &s, const Config &c) {
       g.drawFastVLine(x, y1, 4, COLOR_BLACK);
       struct tm tm;
       gmtime_r(&h, &tm);
+      if (long12 && tm.tm_hour % TREND_LABEL_EVERY_12H) continue;
       // Hours only: "08:00 09:00 10:00" ran together on the panel.
       char lab[8];
       snprintf(lab, sizeof(lab), "%02d", tm.tm_hour);
@@ -746,7 +758,7 @@ void draw_trend_screen(LovyanGFX &g, const State &s, const Config &c) {
 
   // The line: three pixels thick, broken wherever a slot has no reading.
   int drawn = 0, px = -1, py = -1;
-  for (int i = 0; i < TREND_SLOTS && s.trendEnd; i++) {
+  for (int i = 0; i < TREND_SLOTS_12H && have; i++) {
     time_t t = slot_time(i);
     int v = s.trendSg[i];
     if (!v || t < wstart || t > wend) { px = -1; continue; }
@@ -766,7 +778,10 @@ void draw_trend_screen(LovyanGFX &g, const State &s, const Config &c) {
   }
 
   if (!drawn) {
-    const char *msg = s.trendEnd ? "No readings in 3 h" : "No trend from proxy";
+    const char *msg = !s.trendEnd ? "No trend from proxy"
+                    : !have       ? "Proxy sends 3 h only"
+                    : long12      ? "No readings in 12 h"
+                                  : "No readings in 3 h";
     int w = text_width(g, msg, FONT_LABEL);
     int mx = x0 + (x1 - x0 - w) / 2;
     int my = (y0 + y1) / 2 - label_h / 2;
@@ -882,9 +897,9 @@ void draw_info_screen(LovyanGFX &g, const State &s, const Config &c,
 }
 
 void draw_current_screen(LovyanGFX &g, int screen, const State &s,
-                         const Config &c, time_t session_start) {
+                         const Config &c, time_t session_start, bool trend12h) {
   switch (screen) {
-    case SCREEN_TREND: draw_trend_screen(g, s, c);                 break;
+    case SCREEN_TREND: draw_trend_screen(g, s, c, trend12h);       break;
     case SCREEN_STATS: draw_stats_screen(g, s);                    break;
     case SCREEN_PUMP:  draw_pump_screen(g, s, c);                  break;
     case SCREEN_INFO:  draw_info_screen(g, s, c, session_start);   break;

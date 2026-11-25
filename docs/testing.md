@@ -116,6 +116,24 @@ overlap for three hours), a sensor gap on the panel (the line should break),
 a high peak on the panel (top labelled), and a display against a proxy
 without the URL ("No trend from proxy", the other screens unaffected).
 
+## The 12-hour trend
+
+2026-11-25, firmware 0.8-arduino on a board on USB, polling the reference
+Pi. `get_trend_data(data, 144)` checked first on that Pi's live data: 144
+of 144 slots, the last 36 equal to the live `/carelink/trend`, 567 bytes.
+Before the proxy was updated the board asked for `/carelink/trend12h`, got
+404, and fell back to `/carelink/trend` (`36 of 36 readings`, logged as
+"in 3 h"); the 12-hour view then said *Proxy sends 3 h only*. After the
+proxy was installed and restarted (checksum against the working tree):
+`trend12h` 200, `trend` unchanged, and the board's next poll read `144 of
+144 readings`.
+
+The press, from the serial log: each short press on the trend screen
+toggled 3 h and 12 h (redraw under 50 ms), every arrival on the screen
+started at 3 h again, and flicks kept working in between. Not yet tried:
+a press held longer than 3 s, a proxy with readings missing in the older
+9 hours, and a 404 on both URLs (no readings at all).
+
 ## The pump's banner before "No sensor data"
 
 2026-11-20, with the pump really suspended (`pumpBannerState`

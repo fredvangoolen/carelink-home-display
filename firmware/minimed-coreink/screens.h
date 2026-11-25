@@ -12,7 +12,7 @@
 
 // Shown on the info screen; kept here so both the screen and the sketch
 // agree on one string.
-#define VERSION_STR "0.7-arduino"
+#define VERSION_STR "0.8-arduino"
 
 static const int PANEL_W = 200;
 static const int PANEL_H = 200;
@@ -118,5 +118,7 @@ void draw_join_screen(LovyanGFX &g, const char *ssid, const char *pass);
 int  battery_mv();   // median of several ADC reads, millivolts
 int  battery_state(int mv, int prev);   // BATT_*, with hysteresis
 void draw_main_screen(LovyanGFX &g, const State &s, const Config &c);
+// trend12h: the trend screen's 12-hour view instead of its 3-hour one.
 void draw_current_screen(LovyanGFX &g, int screen, const State &s,
-                         const Config &c, time_t session_start);
+                         const Config &c, time_t session_start,
+                         bool trend12h = false);

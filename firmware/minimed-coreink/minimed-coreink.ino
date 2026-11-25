@@ -837,20 +837,22 @@ static bool fetch_pump_data(const Config &c, State &s) {
   return true;
 }
 
-// The last 3 hours for the trend screen, from the proxy's /carelink/trend:
-//   {"end": "2026-08-15T21:09:00", "step": 300, "sg": [36 ints, oldest first]}
-// A separate small request rather than part of nohistory: the full sgs list
-// is ~38 KB and would not survive this board's heap, and a proxy too old to
-// have the URL answers 404, which leaves only this screen empty.
+// The trend screen's readings, from the proxy's /carelink/trend12h:
+//   {"end": "2026-08-15T21:09:00", "step": 300, "sg": [144 ints, oldest first]}
+// or, from a proxy too old for that URL, /carelink/trend's 36. A separate
+// small request rather than part of nohistory: the full sgs list is ~38 KB
+// and would not survive this board's heap. One request a poll in the normal
+// case: the 3-hour view is the last 36 of the 144.
 //
 // Returns false (and leaves s.trend* empty) on any failure; the caller then
 // carries the previous trend forward, as it does lastGoodSg.
-static bool fetch_trend(const Config &c, State &s) {
+static bool fetch_trend_from(const Config &c, State &s, const char *path,
+                             int nslots, int &status) {
   String body;
-  int status = 0;
+  status = 0;
   time_t ignored = 0;
-  if (!http_get(c, "carelink/trend", body, status, ignored)) {
-    Serial.printf("trend: none (status %d)\n", status);
+  if (!http_get(c, path, body, status, ignored)) {
+    Serial.printf("trend: %s none (status %d)\n", path, status);
     return false;
   }
   JsonDocument doc;
@@ -861,19 +863,33 @@ static bool fetch_trend(const Config &c, State &s) {
   }
   JsonArrayConst sg = doc["sg"];
   time_t end = parse_alarm_datetime(doc["end"] | "");   // local, naive: same rule
-  if ((doc["step"] | 0) != TREND_STEP_S || sg.size() != (size_t)TREND_SLOTS || !end) {
-    Serial.println("trend: answer is not 36 readings 5 min apart, ignored");
+  if ((doc["step"] | 0) != TREND_STEP_S || sg.size() != (size_t)nslots || !end) {
+    Serial.printf("trend: answer is not %d readings 5 min apart, ignored\n", nslots);
     return false;
   }
+  // Right-aligned: a 3-hour answer fills the newest slots, the rest stay 0.
+  memset(s.trendSg, 0, sizeof(s.trendSg));
+  const int off = TREND_SLOTS_12H - nslots;
   int n = 0;
-  for (int i = 0; i < TREND_SLOTS; i++) {
+  for (int i = 0; i < nslots; i++) {
     int v = sg[i] | 0;
-    s.trendSg[i] = (v > 0 && v < 1000) ? (uint16_t)v : 0;
-    if (s.trendSg[i]) n++;
+    s.trendSg[off + i] = (v > 0 && v < 1000) ? (uint16_t)v : 0;
+    if (s.trendSg[off + i]) n++;
   }
   s.trendEnd = end;
-  Serial.printf("trend: %d of %d readings, newest %s\n", n, TREND_SLOTS, doc["end"] | "");
+  s.trend12h = (nslots == TREND_SLOTS_12H);
+  Serial.printf("trend: %d of %d readings, newest %s\n", n, nslots, doc["end"] | "");
   return true;
+}
+
+// The 3-hour URL only after a 404: that is what a proxy without the 12-hour
+// URL answers. A timeout or a bad answer must not cost a second request.
+static bool fetch_trend(const Config &c, State &s) {
+  int status = 0;
+  if (fetch_trend_from(c, s, "carelink/trend12h", TREND_SLOTS_12H, status))
+    return true;
+  return status == 404 &&
+         fetch_trend_from(c, s, "carelink/trend", TREND_SLOTS, status);
 }
 
 // What the last battery decision was actually made on. File scope because
@@ -933,8 +949,9 @@ static void dump_state(const State &s, const Config &c) {
     gmtime_r(&s.trendEnd, &tm);   // already local wall clock
     strftime(tw, sizeof(tw), "%Y-%m-%d %H:%M", &tm);
     int n = 0;
-    for (int i = 0; i < TREND_SLOTS; i++) if (s.trendSg[i]) n++;
-    Serial.printf("  trend         %d readings, newest %s local\n", n, tw);
+    for (int i = 0; i < TREND_SLOTS_12H; i++) if (s.trendSg[i]) n++;
+    Serial.printf("  trend         %d readings in %d h, newest %s local\n",
+                  n, s.trend12h ? 12 : 3, tw);
   } else {
     Serial.println("  trend         none");
   }
@@ -1036,13 +1053,14 @@ static void dump_canvas_ascii(M5Canvas &canvas) {
 // dozen panel updates. Measured on the MicroPython build, drawing straight
 // to the panel took 7.7s for this screen against ~30ms composed.
 static void compose(int screen, const State &s, const Config &c,
-                    bool full_refresh, time_t session_start) {
+                    bool full_refresh, time_t session_start,
+                    bool trend12h = false) {
   M5.Display.setEpdMode(full_refresh ? epd_mode_t::epd_quality
                                      : epd_mode_t::epd_fast);
   M5Canvas canvas(&M5.Display);
   canvas.setColorDepth(CANVAS_BPP);
   if (canvas.createSprite(PANEL_W, PANEL_H)) {
-    draw_current_screen(canvas, screen, s, c, session_start);
+    draw_current_screen(canvas, screen, s, c, session_start, trend12h);
 #if DEBUG_ASCII
     dump_font_metrics(canvas);
     dump_canvas_ascii(canvas);
@@ -1053,7 +1071,7 @@ static void compose(int screen, const State &s, const Config &c,
     // Should not happen here - this build has ~275KB free where MicroPython
     // had a ~55KB largest block - but a slow screen beats a blank one.
     Serial.println("canvas allocation failed, drawing direct");
-    draw_current_screen(M5.Display, screen, s, c, session_start);
+    draw_current_screen(M5.Display, screen, s, c, session_start, trend12h);
   }
 }
 
@@ -1066,10 +1084,12 @@ static void compose(int screen, const State &s, const Config &c,
 
 static const gpio_num_t BTN_UP_PIN   = GPIO_NUM_37;
 static const gpio_num_t BTN_DOWN_PIN = GPIO_NUM_39;
-// Pressing the switch in. Used for one thing only - the configuration wipe
-// on the info screen - and deliberately NOT armed as a wake source: ext1 on
-// this chip can only wake on ALL of its pins low, so it cannot share with
-// the down pin, and the wipe is reached from an open session anyway.
+// Pressing the switch in. Two uses, each on one screen: on the trend screen
+// a short press switches between 3 and 12 hours, on the info screen a long
+// hold offers the configuration wipe. Deliberately NOT armed as a wake
+// source: ext1 on this chip can only wake on ALL of its pins low, so it
+// cannot share with the down pin, and both screens are reached from an open
+// session anyway.
 static const gpio_num_t BTN_PRESS_PIN = GPIO_NUM_38;
 
 // How long the switch must be held in on the info screen to offer the wipe.
@@ -1184,7 +1204,7 @@ static void arm_toggle_wake() {
 //
 // A plain struct, where MicroPython had to serialise JSON in and out of RTC
 // memory and re-hydrate it - about 120 lines that simply do not exist here.
-#define RTC_MAGIC 0x4D4D0310u   // bump when the layout changes (lastGoodAt in State)
+#define RTC_MAGIC 0x4D4D0311u   // bump when the layout changes (12 h trend in State)
 
 struct RtcState {
   uint32_t magic;
@@ -1389,15 +1409,40 @@ static int run_toggle_session(int screen, const State &s, const Config &c,
   // reads low there let a hold begun on another screen - carried across by
   // flicking with the switch still pushed in - open the dialog on arrival.
   // So the press only counts once it has been seen released on this screen.
+  // The trend screen's press follows the same rule.
   bool press_armed = false;
+  int  armed_on = screen;
+  // The trend screen's view. Every arrival on that screen starts at 3 hours,
+  // so the screen a caregiver knows is always the one they get first.
+  bool trend12h = false;
 
   while ((int32_t)(deadline - millis()) > 0 &&
          (int32_t)(hard_stop - millis()) > 0) {
     // Holding the switch in on the info screen offers the wipe. Only there:
     // it is the screen that shows the configuration being thrown away.
     bool down = press_down();
-    if (screen != SCREEN_INFO) press_armed = false;
-    else if (!down)            press_armed = true;
+    if (screen != armed_on) { press_armed = false; armed_on = screen; }
+    if (!down) press_armed = true;
+    // A short press on the trend screen: 3 hours <-> 12 hours, on the
+    // release. As with the wipe hold, whatever the up/down contacts did
+    // while the switch was pushed in is not a flick.
+    if (screen == SCREEN_TREND && down && press_armed) {
+      delay(TOGGLE_DEBOUNCE_MS);
+      if (!press_down()) continue;   // a bounce, not a press
+      bool released = wait_press_release();
+      delay(TOGGLE_DEBOUNCE_MS);
+      toggle_take();
+      press_armed = false;   // re-arms once seen released
+      trend12h = !trend12h;
+      uint32_t t_draw = millis();
+      refresh_battery();
+      compose(screen, s, c, false, session_start, trend12h);
+      Serial.printf("toggle: press -> trend %d h, redraw %u ms%s\n",
+                    trend12h ? 12 : 3, (unsigned)(millis() - t_draw),
+                    released ? "" : " (press still held)");
+      deadline = millis() + TOGGLE_AWAKE_MS;
+      continue;
+    }
     if (screen == SCREEN_INFO && down && press_armed) {
       // One unbroken press, nothing else. The switch can be rocked up or
       // down while still pushed in, so any flick during the hold restarts
@@ -1446,6 +1491,7 @@ static int run_toggle_session(int screen, const State &s, const Config &c,
     if (latched || dir != 0) {
       if (dir == 0) dir = SCREEN_FORWARD;
       screen = screen_step(screen, dir);
+      trend12h = false;
 
       // Wait for release BEFORE drawing, so holding the switch does not
       // queue a second advance. BOUNDED: a stuck-low pin must not park the
@@ -1780,6 +1826,7 @@ void setup() {
     if (!s.trendEnd) {
       memcpy(s.trendSg, rtc.snap.trendSg, sizeof(s.trendSg));
       s.trendEnd = rtc.snap.trendEnd;
+      s.trend12h = rtc.snap.trend12h;
     }
     // And the 24-hour stats, when this answer's did not add up (see
     // fetch_pump_data): the last good set, all four together, or none.

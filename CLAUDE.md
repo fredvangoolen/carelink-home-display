@@ -40,6 +40,11 @@ JSON shape is a breaking change for the other side — change both or neither.
   only above 200); a finer line at 100, the pump's target, always; a gap
   breaks the line; hours only on the axis; a failed
   fetch keeps the previous trend.
+- `GET /carelink/trend12h` — the same for 12 hours, 144 values; its last 36
+  are `/carelink/trend`'s. Only the firmware reads it, for the trend
+  screen's 12-hour view (press the switch in), and falls back to
+  `/carelink/trend` on a 404 (an older proxy). Same drawing rules, hours
+  labelled every third hour. Desktop and page have no 12-hour view.
 - `GET /carelink/fallback` — `{"ssid": ..., "psk": ...}` for the Pi's travel
   hotspot, or 404. The display stores it in WiFi slot 2.
 
@@ -100,7 +105,7 @@ arduino-cli compile --fqbn "$FQBN" --upload -p <port> firmware/minimed-coreink
 Everything builds on `proxy/carelink_client2.py` (`CareLinkClient`):
 
 - `carelink_client2_proxy.py` — the daemon. Serves `GET /` (status),
-  `/carelink`, `/carelink/nohistory`, `/carelink/trend`, `/carelink/fallback`, and `/display`
+  `/carelink`, `/carelink/nohistory`, `/carelink/trend`, `/carelink/trend12h`, `/carelink/fallback`, and `/display`
   (the live page in `proxy/display/`, from a fixed table of four files, with
   a strict CSP: it shows CareLink text on the origin that accepts the token
   POST, so data goes in as text only, never as HTML). When the token is

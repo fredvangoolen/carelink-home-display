@@ -15,6 +15,7 @@
 #                                                  # hotspot, if this Pi runs one
 #      http://<serveraddr>:8081/carelink/trend     # the last 3 h of readings,
 #                                                  # compact, for the trend screen
+#      http://<serveraddr>:8081/carelink/trend12h  # the same for 12 h
 #
 #  Author:
 #
@@ -87,6 +88,7 @@ APIURL   = "carelink"
 OPT_NOHISTORY = "nohistory"
 OPT_FALLBACK  = "fallback"
 OPT_TREND     = "trend"
+OPT_TREND12H  = "trend12h"
 
 # The trend screen's window: 36 readings, 5 minutes apart, 3 hours. The
 # display has no room for the full sgs list (about 38 KB of a 119 KB answer
@@ -94,6 +96,10 @@ OPT_TREND     = "trend"
 # down to one small integer per slot.
 TREND_STEP_S = 300
 TREND_SLOTS  = 36
+# The display's 12-hour view (press the switch in on the trend screen), on
+# its own URL so /carelink/trend keeps its 36 values for everything that
+# reads it. Its last 36 slots are exactly /carelink/trend's.
+TREND_SLOTS_12H = 144
 
 # The display's plan B: the private hotspot this Pi runs next to its own
 # WiFi (appliance/travel-ap). Serving its name and password here lets a
@@ -286,9 +292,9 @@ def last_sg_from_history(pd):
    return filled
 
 
-def get_trend_data(data):
+def get_trend_data(data, nslots=TREND_SLOTS):
    # {"end": "<local timestamp of the newest reading>", "step": 300,
-   #  "sg": [36 values, oldest first, 0 = no reading in that slot]}
+   #  "sg": [nslots values, oldest first, 0 = no reading in that slot]}
    # or None when there are no readings to show.
    if not (isinstance(data, dict) and isinstance(data.get("patientData"), dict)):
       return None
@@ -308,11 +314,11 @@ def get_trend_data(data):
    if not points:
       return None
    end_t, _, end_stamp = max(points)
-   slots = [0] * TREND_SLOTS
+   slots = [0] * nslots
    for t, sg, _ in points:
       back = round((end_t - t) / TREND_STEP_S)
-      if 0 <= back < TREND_SLOTS:
-         slots[TREND_SLOTS - 1 - back] = sg
+      if 0 <= back < nslots:
+         slots[nslots - 1 - back] = sg
    return {"end": end_stamp, "step": TREND_STEP_S, "sg": slots}
 
 
@@ -445,10 +451,11 @@ class MyServer(BaseHTTPRequestHandler):
          status_code = HTTPStatus.OK
          content_type = "application/json"
          #print("Only essential data requested")
-      elif self.path.strip("/") == APIURL+'/'+OPT_TREND:
+      elif self.path.strip("/") in (APIURL+'/'+OPT_TREND, APIURL+'/'+OPT_TREND12H):
          # 404 when there is nothing to draw, so a display treats "no
          # readings" and "an older proxy without this URL" the same way.
-         trend = get_trend_data(recentData)
+         long = self.path.strip("/").endswith(OPT_TREND12H)
+         trend = get_trend_data(recentData, TREND_SLOTS_12H if long else TREND_SLOTS)
          if trend:
             response = json.dumps(trend, separators=(",", ":"))
             status_code = HTTPStatus.OK

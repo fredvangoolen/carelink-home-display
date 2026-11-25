@@ -50,10 +50,13 @@ enum {
   LINK_NO_PROXY,        // could not reach the proxy
 };
 
-// The trend screen: the proxy's /carelink/trend, 36 readings 5 minutes apart.
-// Must match TREND_SLOTS / TREND_STEP_S in proxy/carelink_client2_proxy.py.
-static const int TREND_SLOTS  = 36;
-static const int TREND_STEP_S = 300;
+// The trend screen: the proxy's /carelink/trend, 36 readings 5 minutes apart,
+// and /carelink/trend12h, 144 of them for the 12-hour view. Must match
+// TREND_SLOTS, TREND_SLOTS_12H and TREND_STEP_S in
+// proxy/carelink_client2_proxy.py.
+static const int TREND_SLOTS     = 36;
+static const int TREND_SLOTS_12H = 144;
+static const int TREND_STEP_S    = 300;
 
 // Mirrors new_state() in main_m5coreink.py. Plain values only, so the whole
 // struct can later sit in RTC memory across a deep sleep without the JSON
@@ -113,12 +116,15 @@ struct State {
   int rawLink;               // this poll's LINK_*, before the 3-cycle smoothing
   uint8_t failStreak;        // polls in a row without a reading
   char proxyIp[16];          // the remembered proxy address
-  // The last 3 hours, oldest first, 0 = no reading in that slot. trendEnd is
-  // the newest slot's time as LOCAL wall clock parsed naively (like
-  // alarm_local), 0 = no trend fetched yet. Carried across a cycle whose
-  // trend fetch fails, like lastGoodSg.
-  uint16_t trendSg[TREND_SLOTS];
+  // The last 12 hours, oldest first, 0 = no reading in that slot; the 3-hour
+  // view is the last TREND_SLOTS of them. trendEnd is the newest slot's time
+  // as LOCAL wall clock parsed naively (like alarm_local), 0 = no trend
+  // fetched yet. trend12h: the proxy sent 12 hours; false = an older proxy
+  // with only /carelink/trend, whose 3 hours fill the last slots. Carried
+  // across a cycle whose trend fetch fails, like lastGoodSg.
+  uint16_t trendSg[TREND_SLOTS_12H];
   time_t trendEnd;
+  bool trend12h;
 };
 
 inline void state_init(State &s) {
