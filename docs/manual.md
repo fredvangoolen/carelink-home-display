@@ -248,7 +248,8 @@ Your helper installs it (instructions in
 [desktop/README.md](../desktop/README.md)); it needs Python, which is free,
 and the box's address. *Monitor → Test sound* lets you hear the alarm tone.
 It shows the same messages as the table above, but only while the computer
-is on and awake: a sleeping computer shows nothing.
+is on and awake: a sleeping computer shows nothing. Click the chart, or *12 h*
+above it, for 12 hours; the page below works the same way.
 
 For a quick look from any computer or phone at home there is also a page in
 the browser: `http://` followed by the box's name and `:8081/display`, for

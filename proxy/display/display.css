@@ -28,7 +28,11 @@ main { max-width: 640px; margin: 0 auto; padding: 16px; }
 .v { font-size: 1.1rem; }
 @media (max-width: 420px) { .kv { grid-template-columns: repeat(2, 1fr); } }
 
-#chart { display: block; width: 100%; height: auto; margin-top: 16px; }
+.chart-head { display: flex; justify-content: space-between; align-items: baseline;
+              margin-top: 16px; color: var(--dim); font-size: .85rem; }
+.range button { background: none; border: none; color: var(--dim); padding: 2px 6px; font-size: .85rem; }
+.range button.on { color: var(--fg); font-weight: 700; }
+#chart { display: block; width: 100%; height: auto; margin-top: 4px; cursor: pointer; }
 #chart .band { fill: #17301f; }
 #chart .lo { stroke: var(--low); stroke-dasharray: 6 4; }
 #chart .hi { stroke: var(--high); stroke-dasharray: 6 4; }

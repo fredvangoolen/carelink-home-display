@@ -130,7 +130,18 @@ proxy was installed and restarted (checksum against the working tree):
 
 The press, from the serial log: each short press on the trend screen
 toggled 3 h and 12 h (redraw under 50 ms), every arrival on the screen
-started at 3 h again, and flicks kept working in between. Not yet tried:
+started at 3 h again, and flicks kept working in between.
+
+The desktop monitor and the page, the same day: `fetch_trend()` against
+both Pis (144 of 144, 12 h) and against a stand-in for an old proxy (404
+on `trend12h`, 36 on `trend`: 36 readings right-aligned, flagged 3 h). The
+monitor's window screenshotted at 3 h and, after a click on the chart, at
+12 h (hours labelled 03 06 09 12). The page in headless Chrome under the
+proxy's CSP with live data, at 3 h, at 12 h after a click on the chart,
+and with the old-proxy stand-in (*Proxy sends 3 h only*): no CSP or
+script errors. Not yet seen in a phone browser.
+
+Not yet tried on the display:
 a press held longer than 3 s, a proxy with readings missing in the older
 9 hours, and a 404 on both URLs (no readings at all).
 

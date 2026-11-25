@@ -27,7 +27,9 @@ const NEED_LOGIN_MARKER = "Valid token required";
 // readings since; the scale follows the readings but always keeps 70 and
 // 180 in view (trendScale).
 const TREND_SLOTS = 36;
+const TREND_SLOTS_12H = 144;   // /carelink/trend12h, the 12-hour view; its last 36 are the 3 hours
 const TREND_STEP_S = 300;
+const TREND_LABEL_EVERY_12H = 3;   // hour labels over 12 hours: every third hour, ticks every hour
 const TREND_Y_FLOOR = 40, TREND_Y_CEIL = 400;   // what the sensor can read
 const TREND_Y_PAD = 10, TREND_Y_STEP = 20;
 const TREND_Y_TOP_PLAIN = 200;   // the narrowest scale's top: not labelled, it would sit on 180
@@ -55,6 +57,7 @@ const $ = (id) => document.getElementById(id);
 const model = {
   state: null, link: LINK.OK, failStreak: 0, skew: 0, lastGoodSg: 0, lastGoodAt: 0,
   lastPoll: null, answer: "-", raw: "", trend: null, lastGoodStats: null,
+  trendHours: 3,   // the chart's window, 3 or 12; every page load starts at 3, like the display
 };
 let audio = null, alarmKey = null, alarmSounded = 0, pollTimer = null, polling = false, rawShown = null;
 
@@ -181,17 +184,29 @@ async function proxyWantsLogin() {
   }
 }
 
-// /carelink/trend -> {end: epoch, sg: [36]} or null. "end" is local wall
-// clock like lastAlarm.dateTime, read the same way (parseLocal).
+// A trend answer -> {end: epoch, sg: [144], long} or null. Always 144
+// slots, right-aligned: a 3-hour answer (an older proxy) fills the newest
+// 36 and long is false. "end" is local wall clock like lastAlarm.dateTime,
+// read the same way (parseLocal).
+async function fetchTrendFrom(path, nslots) {
+  const r = await fetchWithTimeout(path);
+  if (!r.ok) return { status: r.status, trend: null };
+  const doc = await r.json();
+  const end = parseLocal(doc && doc.end);
+  if (!doc || doc.step !== TREND_STEP_S || !Array.isArray(doc.sg) || doc.sg.length !== nslots || !end)
+    return { status: r.status, trend: null };
+  const sg = new Array(TREND_SLOTS_12H - nslots).fill(0)
+    .concat(doc.sg.map((v) => (isNum(v) && v > 0 ? Math.round(v) : 0)));
+  return { status: r.status, trend: { end, sg, long: nslots === TREND_SLOTS_12H } };
+}
+
+// 12 hours; the 3-hour URL only after a 404, which is what a proxy without
+// /carelink/trend12h answers, as on the display.
 async function fetchTrend() {
   try {
-    const r = await fetchWithTimeout("/carelink/trend");
-    if (!r.ok) return null;
-    const doc = await r.json();
-    const end = parseLocal(doc && doc.end);
-    if (!doc || doc.step !== TREND_STEP_S || !Array.isArray(doc.sg) || doc.sg.length !== TREND_SLOTS || !end)
-      return null;
-    return { end, sg: doc.sg.map((v) => (isNum(v) && v > 0 ? Math.round(v) : 0)) };
+    const a = await fetchTrendFrom("/carelink/trend12h", TREND_SLOTS_12H);
+    if (a.trend || a.status !== 404) return a.trend;
+    return (await fetchTrendFrom("/carelink/trend", TREND_SLOTS)).trend;
   } catch (e) {
     return null;
   }
@@ -341,7 +356,8 @@ function draw() {
   setText("d-alarm", la ? (la.faultId + " " + faultText(String(la.faultId)) + ", " + la.type + ", " + la.dateTime) : "-");
   setText("d-link", LINK_NAME[model.link]);
   const tr = model.trend;
-  setText("d-trend", tr ? tr.sg.filter((v) => v).length + " readings, newest " + hhmm(tr.end) : "none");
+  setText("d-trend", tr ? tr.sg.filter((v) => v).length + " readings in " + (tr.long ? 12 : 3) +
+          " h, newest " + hhmm(tr.end) : "none");
   if ($("debug").open && rawShown !== model.raw) {   // only on change: keeps the scroll position
     rawShown = model.raw;
     let pretty = model.raw;
@@ -368,11 +384,15 @@ function drawTrend() {
   const c = $("chart");
   c.replaceChildren();
   const W = 600, H = 240, x0 = 0, x1 = W - 44, y0 = 10, y1 = H - 28;
-  const wend = now(), wstart = wend - TREND_SLOTS * TREND_STEP_S;
+  const hours = model.trendHours;
+  const wend = now(), wstart = wend - hours * 3600;
   const t = model.trend;
+  // An older proxy sends 3 hours only: say so rather than draw them as if
+  // the 9 hours before had no readings.
+  const have = !!t && (t.long || hours === 3);
   const points = [];   // [time, value] of every slot in the window, 0 = none
-  if (t) t.sg.forEach((v, i) => {
-    const at = t.end - (TREND_SLOTS - 1 - i) * TREND_STEP_S;
+  if (have) t.sg.forEach((v, i) => {
+    const at = t.end - (TREND_SLOTS_12H - 1 - i) * TREND_STEP_S;
     if (at >= wstart && at <= wend) points.push([at, v]);
   });
   const vals = points.map((p) => p[1]).filter((v) => v);
@@ -398,8 +418,9 @@ function drawTrend() {
   const xm = (t) => x0 + (t - wstart) * (x1 - x0) / (wend - wstart);
   for (let h = (Math.floor(wstart / 3600) + 1) * 3600; h <= wend; h += 3600) {
     svg(c, "line", { class: "axis", x1: xm(h), x2: xm(h), y1: y1, y2: y1 + 5 });
-    svg(c, "text", { x: xm(h), y: y1 + 22, "text-anchor": "middle" },
-        String(new Date(h * 1000).getHours()).padStart(2, "0"));
+    const hr = new Date(h * 1000).getHours();
+    if (hours === 3 || hr % TREND_LABEL_EVERY_12H === 0)
+      svg(c, "text", { x: xm(h), y: y1 + 22, "text-anchor": "middle" }, String(hr).padStart(2, "0"));
   }
 
   // Broken wherever a slot has no reading; a lone reading is a dot. The big
@@ -420,7 +441,19 @@ function drawTrend() {
   if (last) svg(c, "circle", { class: "dot", cx: last[0], cy: last[1], r: 6 });
   if (!drawn)
     svg(c, "text", { x: (x0 + x1) / 2, y: (y0 + y1) / 2, "text-anchor": "middle" },
-        t ? "No readings in 3 h" : "No trend from proxy");
+        !t ? "No trend from proxy" : !have ? "Proxy sends 3 h only" : "No readings in " + hours + " h");
+}
+
+// The window: the two buttons over the chart, or a click on the chart.
+function setTrendHours(h) {
+  model.trendHours = h;
+  setText("chart-title", "Last " + h + " hours");
+  $("chart").setAttribute("aria-label", "Glucose, last " + h + " hours");
+  for (const n of [3, 12]) {
+    $("range-" + n).classList.toggle("on", n === h);
+    $("range-" + n).setAttribute("aria-pressed", String(n === h));
+  }
+  drawTrend();
 }
 
 // ------------------------------------------------------------ sound
@@ -468,6 +501,9 @@ $("sound").addEventListener("click", () => {
   beep(true);
 });
 $("refresh").addEventListener("click", poll);
+$("range-3").addEventListener("click", () => setTrendHours(3));
+$("range-12").addEventListener("click", () => setTrendHours(12));
+$("chart").addEventListener("click", () => setTrendHours(15 - model.trendHours));
 $("debug").addEventListener("toggle", draw);
 // A tab in the background may be throttled or frozen; catch up on return.
 document.addEventListener("visibilitychange", () => { if (!document.hidden) poll(); });

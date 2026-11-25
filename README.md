@@ -29,7 +29,7 @@ The proxy holds the one CareLink login and re-serves the data on the local
 network; the display never talks to Medtronic. The two agree on three URLs:
 `GET /carelink/nohistory` (the data), `GET /carelink/trend` (the last three
 hours, for the trend screen, the desktop monitor and the live page),
-`GET /carelink/trend12h` (twelve hours, for the trend screen's long view) and `GET /carelink/fallback` (the Pi's
+`GET /carelink/trend12h` (twelve hours, the same three's long view) and `GET /carelink/fallback` (the Pi's
 travel hotspot, see [docs/travel.md](docs/travel.md)).
 
 ## Put the firmware on a display from your browser

@@ -75,7 +75,9 @@ NEED_LOGIN_MARKER = "Valid token required"   # the proxy's own status string
 # that stops short means no readings since. The scale follows the readings
 # but always keeps 70 and 180 in view (trend_scale).
 TREND_SLOTS = 36
+TREND_SLOTS_12H = 144     # /carelink/trend12h, the 12-hour view; its last 36 are the 3 hours
 TREND_STEP_S = 300
+TREND_LABEL_EVERY_12H = 3  # hour labels over 12 hours: every third hour, ticks every hour
 TREND_Y_FLOOR, TREND_Y_CEIL = 40, 400   # what the sensor can read
 TREND_Y_PAD, TREND_Y_STEP = 10, 20
 TREND_Y_TOP_PLAIN = 200   # the narrowest scale's top: not labelled, it would sit on 180
@@ -302,10 +304,12 @@ def parse(doc):
     return s
 
 
-def parse_trend(body):
-    """/carelink/trend's answer -> {"end": epoch, "sg": [36 ints]} or None.
+def parse_trend(body, nslots=TREND_SLOTS):
+    """A trend answer -> {"end": epoch, "sg": [144 ints], "long": bool} or None.
 
-    "end" is local wall clock like lastAlarm.dateTime, read the same way."""
+    Always 144 slots, right-aligned: a 3-hour answer (an older proxy) fills
+    the newest 36 and "long" is False. "end" is local wall clock like
+    lastAlarm.dateTime, read the same way."""
     try:
         doc = json.loads(body)
     except ValueError:
@@ -314,13 +318,22 @@ def parse_trend(body):
         return None
     sgs = doc.get("sg")
     end = parse_local(doc.get("end"))
-    if not isinstance(sgs, list) or len(sgs) != TREND_SLOTS or not end:
+    if not isinstance(sgs, list) or len(sgs) != nslots or not end:
         return None
-    return {"end": end, "sg": [int(v) if num(v, 0) > 0 else 0 for v in sgs]}
+    sg = [0] * (TREND_SLOTS_12H - nslots) + [int(v) if num(v, 0) > 0 else 0 for v in sgs]
+    return {"end": end, "sg": sg, "long": nslots == TREND_SLOTS_12H}
 
 
 def fetch_trend(proxy):
-    """The trend, or None when the proxy has none (404: none yet, or too old)."""
+    """The trend, or None when the proxy has none (404: none yet, or too old).
+
+    12 hours; the 3-hour URL only after a 404, which is what a proxy without
+    /carelink/trend12h answers, as on the display."""
+    r = http_get(proxy, "carelink/trend12h")
+    if r.status == 200:
+        return parse_trend(r.body, TREND_SLOTS_12H)
+    if r.status != 404:
+        return None
     r = http_get(proxy, "carelink/trend")
     return parse_trend(r.body) if r.status == 200 else None
 
@@ -491,8 +504,9 @@ class Model:
                             sensor_text(s) or "--"))
             lines.append("comms     pump-phone %s, phone-cloud %s" % (s["pumpInRange"], s["phoneInRange"]))
         t = self.trend
-        lines.append("trend     %s" % ("%d readings, newest %s" % (
-            sum(1 for v in t["sg"] if v), time.strftime("%H:%M", time.localtime(t["end"])))
+        lines.append("trend     %s" % ("%d readings in %d h, newest %s" % (
+            sum(1 for v in t["sg"] if v), 12 if t["long"] else 3,
+            time.strftime("%H:%M", time.localtime(t["end"])))
             if t else "none"))
         lines.append("clock     proxy is %+.0f s from this computer" % self.skew)
         return "\n".join(lines)
@@ -613,6 +627,7 @@ class Window:
         self.font_banner = f(15, "bold")
         self.font_text = f(13)
         self.font_small = f(10)
+        self.font_small_bold = f(10, "bold")
 
         self._menu()
 
@@ -657,13 +672,36 @@ class Window:
         self.clock = tk.Label(row, text="--:--", font=self.font_text, bg=bg, fg=fg)
         self.clock.pack(side="right")
 
-        # The last 3 hours, between the values and the bottom rows; it takes
-        # whatever height the window gives it.
-        self.chart = tk.Canvas(root, bg=bg, highlightthickness=0, height=220)
-        self.chart.pack(fill="both", expand=True, padx=16, pady=(12, 6))
+        # The trend, between the values and the bottom rows; it takes
+        # whatever height the window gives it. 3 hours, or 12: the switch in
+        # its header, or a click on the chart. Starts at 3, like the display.
+        self.trend_hours = 3
+        head = tk.Frame(root, bg=bg)
+        head.pack(fill="x", padx=16, pady=(12, 0))
+        self.chart_title = tk.Label(head, text="", font=self.font_small, bg=bg, fg=dim, anchor="w")
+        self.chart_title.pack(side="left")
+        self.range_btn = {}
+        for h in (12, 3):
+            b = tk.Label(head, text="%d h" % h, font=self.font_small, bg=bg, fg=dim,
+                         padx=6, cursor="hand2")
+            b.pack(side="right")
+            b.bind("<Button-1>", lambda e, h=h: self._set_trend_hours(h))
+            self.range_btn[h] = b
+        self.chart = tk.Canvas(root, bg=bg, highlightthickness=0, height=220, cursor="hand2")
+        self.chart.pack(fill="both", expand=True, padx=16, pady=(2, 6))
+        self.chart.bind("<Button-1>", lambda e: self._set_trend_hours(15 - self.trend_hours))
+        self._set_trend_hours(3)
 
         threading.Thread(target=self._poller, daemon=True).start()
         root.after(200, self._tick)
+
+    def _set_trend_hours(self, hours):
+        self.trend_hours = hours
+        self.chart_title.configure(text="Last %d hours" % hours)
+        for h, b in self.range_btn.items():
+            b.configure(fg=COLORS["fg"] if h == hours else COLORS["dim"],
+                        font=self.font_small_bold if h == hours else self.font_small)
+        self._draw_trend()
 
     def _kv(self, parent, label, col):
         tk = self.tk
@@ -839,13 +877,17 @@ class Window:
         lh = self.font_small.metrics("linespace")
         x0, x1, y0, y1 = 0, w - lw - 2, 4, h - lh - 6
 
+        hours = self.trend_hours
         wend = m.now()
-        wstart = wend - TREND_SLOTS * TREND_STEP_S
+        wstart = wend - hours * 3600
         t = m.trend
+        # An older proxy sends 3 hours only: say so rather than draw them as
+        # if the 9 hours before had no readings.
+        have = bool(t) and (t["long"] or hours == 3)
         points = []   # (time, value) of every slot in the window, 0 = none
-        if t:
+        if have:
             for i, v in enumerate(t["sg"]):
-                at = t["end"] - (TREND_SLOTS - 1 - i) * TREND_STEP_S
+                at = t["end"] - (TREND_SLOTS_12H - 1 - i) * TREND_STEP_S
                 if wstart <= at <= wend:
                     points.append((at, v))
         vals = [v for _, v in points if v]
@@ -875,8 +917,9 @@ class Window:
         while hour <= wend:
             x = xm(hour)
             c.create_line(x, y1, x, y1 + 4, fill=C["dim"])
-            c.create_text(x, y1 + 5, text=time.strftime("%H", time.localtime(hour)),
-                          anchor="n", fill=C["dim"], font=self.font_small)
+            if hours == 3 or time.localtime(hour).tm_hour % TREND_LABEL_EVERY_12H == 0:
+                c.create_text(x, y1 + 5, text=time.strftime("%H", time.localtime(hour)),
+                              anchor="n", fill=C["dim"], font=self.font_small)
             hour += 3600
 
         def flush(seg):
@@ -903,7 +946,9 @@ class Window:
                           fill=C["fg"], outline=C["bg"], width=2)
         if not drawn:
             c.create_text((x0 + x1) / 2, (y0 + y1) / 2, fill=C["dim"], font=self.font_small,
-                          text="No readings in 3 h" if t else "No trend from proxy")
+                          text="No trend from proxy" if not t
+                          else "Proxy sends 3 h only" if not have
+                          else "No readings in %d h" % hours)
 
     def run(self):
         if not self.cfg.get("proxy") and not self.args.file:

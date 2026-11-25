@@ -264,7 +264,8 @@ patiënt zelf. Je helper installeert het (instructies, in het Engels, in
 gratis is, en het adres van het kastje. Met *Monitor → Test sound* hoor je
 de alarmtoon. Het toont dezelfde meldingen als de tabel hierboven, maar
 alleen zolang de computer aan staat en niet slaapt: een slapende computer
-toont niets.
+toont niets. Klik op de grafiek, of op *12 h* erboven, voor 12 uur; de
+pagina hieronder werkt net zo.
 
 Om snel even te kijken vanaf een computer of telefoon thuis is er ook een
 pagina in de browser: `http://`, de naam van het kastje en `:8081/display`,
