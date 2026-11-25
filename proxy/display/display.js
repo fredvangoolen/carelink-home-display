@@ -57,7 +57,7 @@ const $ = (id) => document.getElementById(id);
 const model = {
   state: null, link: LINK.OK, failStreak: 0, skew: 0, lastGoodSg: 0, lastGoodAt: 0,
   lastPoll: null, answer: "-", raw: "", trend: null, lastGoodStats: null,
-  trendHours: 3,   // the chart's window, 3 or 12; every page load starts at 3, like the display
+  trendHours: 12,   // the chart's window, 3 or 12; every page load starts at 12 (the display at 3)
 };
 let audio = null, alarmKey = null, alarmSounded = 0, pollTimer = null, polling = false, rawShown = null;
 

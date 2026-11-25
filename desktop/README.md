@@ -55,7 +55,7 @@ The same as the display, by the same rules:
 - active insulin, pump battery, reservoir, sensor time left, the 24-hour
   statistics, and how long ago the reading was taken;
 - the trend over the last 3 hours, or 12: click *3 h* / *12 h* above the
-  chart, or the chart itself. It starts at 3 hours.
+  chart, or the chart itself. It starts at 12 hours.
 
 **Sound.** A pump alarm or alert from the last 15 minutes plays a tone when
 it first appears and again every 5 minutes while it shows, like the

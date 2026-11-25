@@ -674,8 +674,9 @@ class Window:
 
         # The trend, between the values and the bottom rows; it takes
         # whatever height the window gives it. 3 hours, or 12: the switch in
-        # its header, or a click on the chart. Starts at 3, like the display.
-        self.trend_hours = 3
+        # its header, or a click on the chart. Starts at 12: a window on a
+        # desk has the room, where the display's small panel starts at 3.
+        self.trend_hours = 12
         head = tk.Frame(root, bg=bg)
         head.pack(fill="x", padx=16, pady=(12, 0))
         self.chart_title = tk.Label(head, text="", font=self.font_small, bg=bg, fg=dim, anchor="w")
@@ -690,7 +691,7 @@ class Window:
         self.chart = tk.Canvas(root, bg=bg, highlightthickness=0, height=220, cursor="hand2")
         self.chart.pack(fill="both", expand=True, padx=16, pady=(2, 6))
         self.chart.bind("<Button-1>", lambda e: self._set_trend_hours(15 - self.trend_hours))
-        self._set_trend_hours(3)
+        self._set_trend_hours(12)
 
         threading.Thread(target=self._poller, daemon=True).start()
         root.after(200, self._tick)

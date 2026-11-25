@@ -44,9 +44,10 @@ JSON shape is a breaking change for the other side — change both or neither.
   are `/carelink/trend`'s. All three frontends read it for a 12-hour view
   and fall back to `/carelink/trend` on a 404 only (an older proxy); the
   12-hour view then says "Proxy sends 3 h only". Same drawing rules, hours
-  labelled every third hour (ticks every hour). Each starts at 3 hours: the
-  display toggles with a press of the switch on the trend screen, the
-  desktop and the page with "3 h | 12 h" over the chart or a click on it.
+  labelled every third hour (ticks every hour). The display starts at 3
+  hours and toggles with a press of the switch on the trend screen; the
+  desktop and the page start at 12 and toggle with "3 h | 12 h" over the
+  chart or a click on it.
 - `GET /carelink/fallback` — `{"ssid": ..., "psk": ...}` for the Pi's travel
   hotspot, or 404. The display stores it in WiFi slot 2.
 
