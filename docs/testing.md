@@ -6,7 +6,7 @@ done yet.
 
 ## Firmware test builds
 
-Three compile-time switches exist only for testing. Set them with
+Four compile-time switches exist only for testing. Set them with
 `--build-property "compiler.cpp.extra_flags=..."` on the `arduino-cli compile`
 command line; `LAYOUT_TEST` is a `#define` in the sketch.
 
@@ -15,13 +15,15 @@ command line; `LAYOUT_TEST` is a `#define` in the sketch.
 | `-DPLAN_A_RETRY_CYCLES=2` | on plan B, try plan A again every 2 cycles (10 minutes) instead of every 12 (one hour) |
 | `-DPORTAL_AP_TEST=1` | open the setup portal on every boot and store nothing |
 | `LAYOUT_TEST 1` | compose every screen once with synthetic data, including an alarm |
+| `-DWATCHDOG_TEST_S=20` | hang every scheduled poll after the WiFi join and let the watchdog cut it off after 20 s: walks the recovery path (redraw, 60 s, then 300 s; *Update failed - see Network* from the third) |
 
 **A test build must never be left on a board.** `PORTAL_AP_TEST` in particular
 keeps the board out of monitoring altogether: it shows a setup page instead of
 a glucose reading. After testing, flash the normal build and watch one full
 cycle.
 
-`PORTAL_AP_TEST` announces itself on the serial console at boot;
+`PORTAL_AP_TEST` and `WATCHDOG_TEST_S` announce themselves on the serial
+console (the latter on every poll, and it never shows a reading);
 `PLAN_A_RETRY_CYCLES` does not. When in doubt about what a board runs,
 reflash the normal build.
 
@@ -238,7 +240,29 @@ with 0/8/6, 86/8/6, 85/8/6 and none; the board flashed with it shows a good
 set (86/8/6) normally. Not yet seen: the board and the page during a real
 phone outage.
 
+## The watchdog fail-safe and the debug screen
+
+Tested 2026-11-27 on the home board, on USB, with `-DWATCHDOG_TEST_S=20`
+(a hang after every WiFi join). The watchdog fired after 20 s (reset reason
+6, `TASK_WDT`); the board stayed powered; the next boot came up with the
+snapshot kept (`cold 0`), redrew in 3 s without the network and slept 60 s,
+then 300 s after the second abort. From the third, the panel read *Update
+failed - see Network*, and *Device & Network* read *Last poll 10:11 cut off*
+(checked by eye). A first attempt with the state still in `RTC_DATA_ATTR`
+came back as a cold boot after every reset: that is why it is
+`RTC_NOINIT_ATTR` now. The normal build then ran its cycles as before (4.5 to
+7.2 s awake). The debug screen: a short press on *Device & Network* shows
+it, a second press or a flick leaves it, the 5 s hold still offers the
+wipe, and all 9 rows fit (checked by eye).
+
 ## Not tested yet
+
+- **The watchdog fail-safe on battery**: that the power latch holds through
+  a watchdog reset on battery, as it did on USB (a software reset was
+  measured to, see lessons.md). A brownout reset taking the recovery path,
+  and the counters after one, have not been seen at all: the cause of the
+  blank panel of 2026-11-27 is still unknown. *No WiFi - see Network* has
+  not been seen on the panel.
 
 - **The alarm sound heard by ear** (desktop *Monitor → Test sound*, and the
   page after *Enable alarm sound*), and the monitor **on Windows and

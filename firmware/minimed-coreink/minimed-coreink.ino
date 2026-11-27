@@ -29,6 +29,7 @@
 #include "driver/gpio.h"
 #include "esp_timer.h"
 #include "esp_sleep.h"
+#include "esp_task_wdt.h"
 #include "esp_rom_crc.h"
 #include <lwip/netdb.h>
 #include "types.h"
@@ -905,7 +906,8 @@ static void dump_state(const State &s, const Config &c) {
     strftime(when, sizeof(when), "%Y-%m-%d %H:%M:%S", &tm);
   }
   static const char *LINK_NAMES[] = {
-    "ok", "no sensor data", "proxy has no data", "proxy needs login", "no proxy"
+    "ok", "no sensor data", "proxy has no data", "proxy needs login", "no proxy",
+    "no wifi", "cycle aborted"
   };
   Serial.println("---- state ----");
   Serial.printf("  link          %s\n", LINK_NAMES[s.link]);
@@ -1052,6 +1054,10 @@ static void dump_canvas_ascii(M5Canvas &canvas) {
 // drawing call, so a screen built from a few dozen primitives triggers a few
 // dozen panel updates. Measured on the MicroPython build, drawing straight
 // to the panel took 7.7s for this screen against ~30ms composed.
+// The debug screen's counters; set in setup() once rtc is known good. A
+// pointer because rtc is declared further down.
+static const DebugStats *debug_stats = nullptr;
+
 static void compose(int screen, const State &s, const Config &c,
                     bool full_refresh, time_t session_start,
                     bool trend12h = false) {
@@ -1060,7 +1066,7 @@ static void compose(int screen, const State &s, const Config &c,
   M5Canvas canvas(&M5.Display);
   canvas.setColorDepth(CANVAS_BPP);
   if (canvas.createSprite(PANEL_W, PANEL_H)) {
-    draw_current_screen(canvas, screen, s, c, session_start, trend12h);
+    draw_current_screen(canvas, screen, s, c, session_start, trend12h, debug_stats);
 #if DEBUG_ASCII
     dump_font_metrics(canvas);
     dump_canvas_ascii(canvas);
@@ -1071,7 +1077,7 @@ static void compose(int screen, const State &s, const Config &c,
     // Should not happen here - this build has ~275KB free where MicroPython
     // had a ~55KB largest block - but a slow screen beats a blank one.
     Serial.println("canvas allocation failed, drawing direct");
-    draw_current_screen(M5.Display, screen, s, c, session_start, trend12h);
+    draw_current_screen(M5.Display, screen, s, c, session_start, trend12h, debug_stats);
   }
 }
 
@@ -1117,6 +1123,8 @@ static const uint32_t TOGGLE_AWAKE_MS = 15000;
 static const uint32_t TOGGLE_SESSION_MAX_MS = 180000;
 static const uint32_t TOGGLE_RELEASE_MAX_MS = 3000;
 static const uint32_t TOGGLE_DEBOUNCE_MS    = 120;
+// Shortest press on the info screen that shows the debug screen.
+static const uint32_t DEBUG_PRESS_MIN_MS    = 40;
 
 // Presses are latched by an interrupt rather than discovered by polling: a
 // panel redraw blocks for a noticeable fraction of a second, and a flick
@@ -1196,15 +1204,21 @@ static void arm_toggle_wake() {
 
 // ------------------------------------------------------------- rtc state
 //
-// RTC_DATA_ATTR survives deep sleep and is re-initialised on every other
-// reset - which is exactly the semantics wanted here, and the same as the
-// MicroPython build's RTC memory: a cold boot must start with no snapshot
-// rather than a stale one. (It is NOT the place for anything that has to
-// outlive a crash; see the reboot counter in the phase 0 notes.)
+// RTC_NOINIT_ATTR: survives deep sleep AND a reset, where RTC_DATA_ATTR is
+// reloaded from the image on every reset that is not a deep-sleep wake. It
+// was RTC_DATA_ATTR until the fail-safe (see there) needed the snapshot to
+// outlive the watchdog's reset: measured 2026-11-27, every watchdog reset
+// came back as a cold boot with nothing to draw.
+//
+// The price is that the boot now decides what a cold boot is, rather than
+// the loader: setup() wipes this struct unless the reset was a deep-sleep
+// wake or an aborted cycle (cycle_aborted()). A power-on, the back button,
+// a deliberate restart: all start with no snapshot rather than a stale one,
+// as before. On a power-on the memory holds noise, and the magic tells it.
 //
 // A plain struct, where MicroPython had to serialise JSON in and out of RTC
 // memory and re-hydrate it - about 120 lines that simply do not exist here.
-#define RTC_MAGIC 0x4D4D0311u   // bump when the layout changes (12 h trend in State)
+#define RTC_MAGIC 0x4D4D0313u   // bump when the layout changes (DebugStats)
 
 struct RtcState {
   uint32_t magic;
@@ -1222,10 +1236,12 @@ struct RtcState {
   uint8_t  wifi_fails;      // consecutive wakes that joined no network at all
   uint8_t  planb_cycles;    // poll cycles spent on the fallback since plan A was last tried
   uint16_t fallback_age;    // poll cycles since the proxy was last asked for the fallback; 0 = not yet
+  uint8_t  aborts;          // cycles in a row that never finished (see cycle_aborted())
+  DebugStats stats;         // the debug screen's counters
   State    snap;
 };
 
-RTC_DATA_ATTR RtcState rtc;
+RTC_NOINIT_ATTR RtcState rtc;
 
 // How many consecutive bad cycles before the panel says anything about it.
 //
@@ -1269,6 +1285,81 @@ static const uint8_t  WIFI_RETRIES = sizeof(WIFI_RETRY_S) / sizeof(WIFI_RETRY_S[
 // refreshes plus any toggle redraws ghost the panel badly. Measured cost of
 // the quality waveform: ~360ms against ~180ms for fast, once per 5 minutes.
 static const uint32_t FULL_REFRESH_EVERY = 1;
+
+// ---------------------------------------------------------------- fail-safe
+//
+// Every wake starts with M5.begin() wiping the panel white, and only draws
+// once the cycle is done. A cycle that never gets there therefore leaves a
+// BLANK panel, and on battery an awake board that never sleeps again: seen
+// 2026-11-27 on the home board, at 67%, at a spot with -88 dBm WiFi. Whether
+// it hung or browned out could not be told afterwards.
+//
+// So a watchdog bounds every wake. When it fires, the board resets; RTC
+// memory survives that, and the next boot finds the reset reason, redraws
+// the last snapshot and sleeps (the recovery path in setup()). A brownout
+// lands in the same path. The task watchdog the core already runs (5 s,
+// idle task only) is re-pointed at the sketch's own task with a budget per
+// kind of wake.
+//
+// The scheduled cycle: the slowest LEGITIMATE one stays well inside this
+// (two plans of WiFi attempts, a lookup budget, three requests), measured
+// cycles take 6-20 s. Past it the cycle is not coming back with anything.
+// A test build hangs every scheduled cycle after the WiFi join and lets the
+// watchdog cut it off after this many seconds, to walk the recovery path on
+// the bench: -DWATCHDOG_TEST_S=20. Never leave one on a board (docs/testing.md).
+#ifdef WATCHDOG_TEST_S
+static const uint32_t CYCLE_MAX_S = WATCHDOG_TEST_S;
+#else
+static const uint32_t CYCLE_MAX_S = 180;
+#endif
+// A toggle session is NOT watched: someone is standing in front of the
+// panel, it has its own bound (TOGGLE_SESSION_MAX_MS), and a person reading
+// a screen must never be cut off by a reset.
+// After the first abort, look again soon: one hiccup should cost a minute,
+// not five. After more in a row, the ordinary period, so a fault that
+// repeats every cycle (a brownout on every WiFi start) cannot drain the
+// battery at a minute a time.
+static const uint32_t ABORT_RETRY_S = 60;
+
+static void watchdog_arm(uint32_t seconds) {
+  esp_task_wdt_config_t wc = {};
+  wc.timeout_ms = seconds * 1000;
+  wc.idle_core_mask = 1 << 0;   // as the core set it up: CPU0's idle task
+  wc.trigger_panic = true;      // reset, do not just print
+  esp_task_wdt_reconfigure(&wc);
+  esp_task_wdt_add(nullptr);    // ESP_ERR_INVALID_ARG when already added: fine
+  esp_task_wdt_reset();
+}
+
+// The setup portal and a toggle session wait on a person.
+static void watchdog_off() {
+  esp_task_wdt_delete(nullptr);
+}
+
+// The previous wake ended in a reset rather than a deep sleep. A deliberate
+// esp_restart() (portal saved, wipe) is ESP_RST_SW and is not one of these.
+static bool cycle_aborted(esp_reset_reason_t r) {
+  switch (r) {
+    case ESP_RST_PANIC:
+    case ESP_RST_INT_WDT:
+    case ESP_RST_TASK_WDT:
+    case ESP_RST_WDT:
+    case ESP_RST_BROWNOUT:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// How long this poll kept the board awake, for the debug screen. Called on
+// the scheduled paths just before sleep_until(); a poll the watchdog cut off
+// never gets here, and the Watchdog row counts those instead.
+static void note_awake() {
+  uint32_t ms = (uint32_t)(esp_timer_get_time() / 1000);
+  rtc.stats.awakeN++;
+  rtc.stats.awakeSumMs += ms;
+  if (ms > rtc.stats.awakeMaxMs) rtc.stats.awakeMaxMs = ms;
+}
 
 // -------------------------------------------------------------------- main
 
@@ -1415,6 +1506,9 @@ static int run_toggle_session(int screen, const State &s, const Config &c,
   // The trend screen's view. Every arrival on that screen starts at 3 hours,
   // so the screen a caregiver knows is always the one they get first.
   bool trend12h = false;
+  // The debug screen, shown in place of the info screen. Session-only like
+  // the trend's view: every arrival on the info screen starts without it.
+  bool debug = false;
 
   while ((int32_t)(deadline - millis()) > 0 &&
          (int32_t)(hard_stop - millis()) > 0) {
@@ -1465,6 +1559,7 @@ static int run_toggle_session(int screen, const State &s, const Config &c,
         run_wipe_dialog();   // returns only on No
         holding = false;
         press_armed = false;   // re-arms once the switch is seen released
+        debug = false;
         toggle_take();
         refresh_battery();
         compose(screen, s, c, true, session_start);
@@ -1476,11 +1571,25 @@ static int run_toggle_session(int screen, const State &s, const Config &c,
     if (holding) {
       // Released early. Whatever the up/down contacts did while the switch
       // was pushed in is not a flick; discard it.
-      Serial.printf("wipe: hold released after %u ms\n",
-                    (unsigned)(millis() - press_since));
+      //
+      // A short press - released well before the wipe - swaps between the
+      // info screen and the debug screen. The minimum filters a bounce;
+      // anything held past it and released before WIPE_HOLD_MS counts,
+      // since a hold given up half-way is still somebody pressing.
+      uint32_t held = millis() - press_since;
+      Serial.printf("wipe: hold released after %u ms\n", (unsigned)held);
       holding = false;
       delay(TOGGLE_DEBOUNCE_MS);
       toggle_take();
+      if (held >= DEBUG_PRESS_MIN_MS) {
+        debug = !debug;
+        uint32_t t_draw = millis();
+        refresh_battery();
+        compose(debug ? SCREEN_DEBUG : screen, s, c, false, session_start);
+        Serial.printf("toggle: press -> %s, redraw %u ms\n",
+                      debug ? "debug" : "info", (unsigned)(millis() - t_draw));
+        deadline = millis() + TOGGLE_AWAKE_MS;
+      }
       continue;
     }
     bool latched = toggle_take();
@@ -1492,6 +1601,7 @@ static int run_toggle_session(int screen, const State &s, const Config &c,
       if (dir == 0) dir = SCREEN_FORWARD;
       screen = screen_step(screen, dir);
       trend12h = false;
+      debug = false;   // a flick from the debug screen moves on from info
 
       // Wait for release BEFORE drawing, so holding the switch does not
       // queue a second advance. BOUNDED: a stuck-low pin must not park the
@@ -1561,16 +1671,19 @@ void setup() {
   esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
   bool woke_on_toggle = (cause == ESP_SLEEP_WAKEUP_EXT0 ||
                          cause == ESP_SLEEP_WAKEUP_EXT1);
-  bool cold_boot = (rtc.magic != RTC_MAGIC);
+  const esp_reset_reason_t reset_reason = esp_reset_reason();
+  const bool kept = (reset_reason == ESP_RST_DEEPSLEEP || cycle_aborted(reset_reason));
+  bool cold_boot = !kept || rtc.magic != RTC_MAGIC;
   if (cold_boot) {
     memset(&rtc, 0, sizeof(rtc));
     state_init(rtc.snap);
     rtc.magic = RTC_MAGIC;
     rtc.screen = SCREEN_MAIN;
   }
+  debug_stats = &rtc.stats;
 
   Serial.printf("\ncoreink: power hold at %lld us, reset %d, wake %d, cold %d, cycle %u\n",
-                power_hold_us, (int)esp_reset_reason(), (int)cause,
+                power_hold_us, (int)reset_reason, (int)cause,
                 (int)cold_boot, rtc.cycle);
   // What the toggle path would draw from. If this reads empty on a wake, the
   // secondary screens show "--" and the cause is the snapshot, not the fetch.
@@ -1578,6 +1691,9 @@ void setup() {
                 rtc.snap.sg, rtc.snap.activeInsulin, rtc.snap.reservoirUnits,
                 rtc.snap.sageHours, rtc.snap.batteryPct,
                 rtc.snap.ip[0] ? rtc.snap.ip : "(none)");
+  // First thing after the log line, before anything that could hang -
+  // M5.begin() included. The toggle path switches it off again.
+  watchdog_arm(CYCLE_MAX_S);
 
   auto mcfg = M5.config();
   // TRUE, where main_m5coreink.py sets it False - and this is the single
@@ -1610,6 +1726,7 @@ void setup() {
 #if PORTAL_AP_TEST
   config_read(cfg);
   Serial.println("PORTAL_AP_TEST - starting setup portal, nothing will be stored");
+  watchdog_off();
   run_config_portal(cfg, true);
 #endif
   if (!config_read(cfg)) {
@@ -1618,6 +1735,7 @@ void setup() {
     // of. A WiFi FAILURE later does NOT come here - that would strand a
     // working monitor in setup mode over a transient hiccup.
     Serial.println("config incomplete - starting setup portal");
+    watchdog_off();
     run_config_portal(cfg);   // never returns; reboots when saved
   }
 
@@ -1627,6 +1745,7 @@ void setup() {
   // the screens gains from data a few minutes fresher; the scheduled poll is
   // what keeps it current.
   if (woke_on_toggle && !cold_boot) {
+    watchdog_off();
     // The first step of a session comes from the WAKE CAUSE, not from the
     // pins: the interrupt handler is not installed yet, and by the time the
     // levels are sampled the switch has usually sprung back. ext0 is armed on
@@ -1640,6 +1759,40 @@ void setup() {
     refresh_battery();
     compose(rtc.screen, rtc.snap, cfg, false, rtc.session_start);
     rtc.screen = run_toggle_session(rtc.screen, rtc.snap, cfg, rtc.session_start);
+    sleep_until(rtc.next_poll);   // does not return
+  }
+
+  // --- The previous wake never finished: see "fail-safe". Draw what there
+  // is and sleep, WITHOUT the network: whatever stopped that cycle may well
+  // stop this one too, and a drawn panel now beats a blank one for minutes.
+  // Counts as a failed poll, so three in a row read "Update failed".
+  if (!cold_boot && cycle_aborted(reset_reason)) {
+    if (rtc.aborts < 255) rtc.aborts++;
+    rtc.stats.polls++;   // the one that never finished
+    if (reset_reason == ESP_RST_BROWNOUT) {
+      rtc.stats.brownout++;
+    } else if (reset_reason == ESP_RST_PANIC) {
+      rtc.stats.crashes++;
+    } else {
+      rtc.stats.watchdog++;
+      rtc.stats.watchdogAt = time(nullptr);
+    }
+    note_link(LINK_ABORTED);
+    const bool confirmed = link_fault_confirmed();
+    if (confirmed) rtc.snap.link = LINK_ABORTED;
+    rtc.snap.rawLink = LINK_ABORTED;
+    rtc.snap.pollAt = time(nullptr);
+    expire_alarm(rtc.snap, cfg, confirmed);
+    const uint32_t retry_s = rtc.aborts == 1 ? ABORT_RETRY_S : POLL_PERIOD_S;
+    Serial.printf("previous cycle aborted (reset %d, %u in a row, streak %u/%u), "
+                  "redrawing the last reading, next look in %u s\n",
+                  (int)reset_reason, (unsigned)rtc.aborts, (unsigned)rtc.fail_streak,
+                  (unsigned)LINK_FAULT_STREAK, (unsigned)retry_s);
+    rtc.screen = SCREEN_MAIN;
+    rtc.next_poll = time(nullptr) + retry_s;
+    refresh_battery();
+    compose(SCREEN_MAIN, rtc.snap, cfg, true, rtc.session_start);
+    rtc.cycle++;
     sleep_until(rtc.next_poll);   // does not return
   }
 
@@ -1685,8 +1838,13 @@ void setup() {
       rtc.wifi_channel = 0;
     }
     // The quick looks in between do not count; see WIFI_RETRY_S.
-    if (rtc.wifi_fails == 1 || !quick) note_link(LINK_NO_PROXY);
-    if (link_fault_confirmed()) rtc.snap.link = LINK_NO_PROXY;
+    if (rtc.wifi_fails == 1 || !quick) note_link(LINK_NO_WIFI);
+    if (link_fault_confirmed()) rtc.snap.link = LINK_NO_WIFI;
+    rtc.snap.rawLink = LINK_NO_WIFI;
+    rtc.snap.pollAt = time(nullptr);
+    rtc.aborts = 0;   // this cycle finished, if without a network
+    rtc.stats.polls++;
+    rtc.stats.noWifi++;
     expire_alarm(rtc.snap, cfg, link_fault_confirmed());
     // BOTH of these lines are load-bearing, and their absence is what turned
     // one flaky cycle into a blank panel that "recovered by itself".
@@ -1705,6 +1863,7 @@ void setup() {
     compose(SCREEN_MAIN, rtc.snap, cfg, (rtc.cycle % FULL_REFRESH_EVERY) == 0,
             rtc.session_start);
     rtc.cycle++;
+    note_awake();
     sleep_until(rtc.next_poll);
   }
   rtc.wifi_fails = 0;
@@ -1731,7 +1890,14 @@ void setup() {
   };
   note_wifi(slot);
 
+#ifdef WATCHDOG_TEST_S
+  // The hang this guards against, on demand: joined, then nothing.
+  Serial.println("WATCHDOG_TEST: hanging after the WiFi join");
+  for (;;) delay(100);
+#endif
+
 #if PORTAL_TEST
+  watchdog_off();
   run_config_portal_sta(cfg);   // blocks; reboots when a config is submitted
 #endif
 
@@ -1788,6 +1954,10 @@ void setup() {
   WiFi.disconnect(true);
   WiFi.mode(WIFI_OFF);
 
+  rtc.stats.polls++;
+  if (s.rawLink == LINK_NO_PROXY) rtc.stats.noProxy++;
+  if (is_fallback(slot)) rtc.stats.planB++;
+
   note_link(s.link);
   const bool confirmed = link_fault_confirmed();
   s.failStreak = rtc.fail_streak;
@@ -1798,6 +1968,7 @@ void setup() {
   // alarm, and an alarm must never wait three cycles.
   const bool proxy_empty = (s.link == LINK_PROXY_NO_DATA || s.link == LINK_PROXY_LOGIN);
   const bool adopt = ok && !proxy_empty;
+  if (adopt) rtc.stats.pollsOk++;
 
   // Say it before the field is cleared, or a building streak on an adopted
   // cycle leaves no trace at all: dump_state() below would print "link ok"
@@ -1889,7 +2060,7 @@ void setup() {
     // pushes the glucose figure into the smaller font and fills the strip
     // that is otherwise empty. Counting total ink alone would not
     // distinguish a rendered banner from a silently clipped one.
-    for (int lk = LINK_OK; lk <= LINK_NO_PROXY; lk++) {
+    for (int lk = LINK_OK; lk <= LINK_ABORTED; lk++) {
       State t = s;
       t.link = lk;
       t.sg = (lk == LINK_OK) ? 132 : 0;
@@ -1920,6 +2091,7 @@ void setup() {
     snprintf(s.ip, sizeof(s.ip), "%s", local_ip.c_str());
     snprintf(s.ssid, sizeof(s.ssid), "%s", cfg.wifi[slot].ssid.c_str());
     s.rssi = wifi_rssi;
+    s.pollAt = time(nullptr);
     rtc.snap = s;
     // Anchor the cadence on the fetch, not on the wake, so the tail of the
     // cycle never shifts the schedule.
@@ -1935,6 +2107,8 @@ void setup() {
     // one; without the streak, one flaky cycle raises a banner that is gone
     // again before anyone reads it.
     if (confirmed) rtc.snap.link = s.link;
+    rtc.snap.rawLink = s.rawLink;
+    rtc.snap.pollAt = time(nullptr);
     expire_alarm(rtc.snap, cfg, confirmed);
     // The schedule has to advance on this path too, or sleep_until() falls to
     // its 5s floor and the board spins.
@@ -1947,6 +2121,7 @@ void setup() {
                   confirmed ? "will name the fault" : "keeps the last reading, silently");
   }
 
+  rtc.aborts = 0;
   // Tested before the increment so cycle 0 - the first draw after a cold
   // boot, which has the splash still on the panel to clear - is a full one.
   refresh_battery();
@@ -1954,6 +2129,7 @@ void setup() {
           rtc.session_start);
   rtc.cycle++;
 
+  note_awake();
   sleep_until(rtc.next_poll);
 }
 

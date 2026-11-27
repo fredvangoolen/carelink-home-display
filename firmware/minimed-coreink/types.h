@@ -48,6 +48,11 @@ enum {
   LINK_PROXY_NO_DATA,   // proxy answered and is holding nothing at all
   LINK_PROXY_LOGIN,     // proxy says outright that it needs a CareLink login
   LINK_NO_PROXY,        // could not reach the proxy
+  // The two below are the display's own: the desktop and the page have no
+  // WiFi join and no deep-sleep cycle to lose, so they never see them.
+  LINK_NO_WIFI,         // joined no network at all, plan A nor plan B
+  LINK_ABORTED,         // the cycle never finished: the watchdog cut it off,
+                        // a crash, or a brownout reset (see cycle_aborted())
 };
 
 // The trend screen: the proxy's /carelink/trend, 36 readings 5 minutes apart,
@@ -114,6 +119,10 @@ struct State {
   int8_t pumpInRange;        // pump within reach of the phone; -1 = unknown
   int8_t phoneInRange;       // phone in contact with CareLink; -1 = unknown
   int rawLink;               // this poll's LINK_*, before the 3-cycle smoothing
+  // When that poll ran, epoch UTC; 0 = none yet. Unlike the rest of the
+  // snapshot, these two are written on EVERY poll, failed ones included, so
+  // the Device & Network screen says how the last attempt went.
+  time_t pollAt;
   uint8_t failStreak;        // polls in a row without a reading
   char proxyIp[16];          // the remembered proxy address
   // The last 12 hours, oldest first, 0 = no reading in that slot; the 3-hour
@@ -125,6 +134,26 @@ struct State {
   uint16_t trendSg[TREND_SLOTS_12H];
   time_t trendEnd;
   bool trend12h;
+};
+
+// Counters for the debug screen (a short press on Device & Network), kept
+// in RTC memory beside the snapshot: since the last power-on, back button or
+// deliberate restart, and deliberately NOT reset by the resets they count.
+// RAM only - nothing is written to flash, and keeping them costs nothing
+// measurable. Plain POD for the same reason as State.
+struct DebugStats {
+  uint32_t polls;        // scheduled polls started, aborted ones included
+  uint32_t pollsOk;      // ... that brought data from the proxy
+  uint16_t watchdog;     // polls cut off by the watchdog
+  time_t   watchdogAt;   // when the last of those was found, epoch UTC; 0 = never
+  uint16_t brownout;     // brownout resets
+  uint16_t crashes;      // other crash resets (panic)
+  uint16_t noWifi;       // wakes that joined no network at all
+  uint16_t noProxy;      // joined, but the proxy did not answer
+  uint16_t planB;        // polls made over the fallback hotspot
+  uint32_t awakeN;       // polls whose awake time was measured (finished ones)
+  uint32_t awakeSumMs;
+  uint32_t awakeMaxMs;
 };
 
 inline void state_init(State &s) {

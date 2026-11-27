@@ -79,12 +79,12 @@ Check these by phone or message beforehand. Without any one of them, the visit e
 
 ## If something goes wrong on site
 
-Look first at the line at the bottom of the display's main screen, then at the proxy's page, `http://carelink-<name>.local:8081/`, which says since when there is no data and why. *No sensor data* is the sensor, the pump or the patient's phone, not the set. *No link to proxy* is the Pi or the WiFi. *CareLink login needed* is the token. *Proxy has no data* is the Pi's own internet connection, or CareLink. The [runbook](runbook.md#reading-a-fault-from-a-distance) has the details.
+Look first at the line at the bottom of the display's main screen, then at the proxy's page, `http://carelink-<name>.local:8081/`, which says since when there is no data and why. *No sensor data* is the sensor, the pump or the patient's phone, not the set. *No link to proxy* is the Pi or the network between them; *No WiFi - see Network* and *Update failed - see Network* are the display's WiFi. *CareLink login needed* is the token. *Proxy has no data* is the Pi's own internet connection, or CareLink. The [runbook](runbook.md#reading-a-fault-from-a-distance) has the details.
 
 | You see | Do |
 | --- | --- |
 | The renewal link opens by address but not by name | The network does not pass mDNS. Give the Pi a DHCP reservation on the router, and enter that address on the display instead of the name |
-| *No link to proxy* on the display after 15 minutes | Check the WiFi is 2.4 GHz, and that the WiFi name and the proxy name are spelled exactly right, capitals and spaces included. To redo the setup: on *Device & Network*, hold the switch in for 5 s, choose *Yes* |
+| *No WiFi - see Network* or *No link to proxy* on the display after 15 minutes | Check the WiFi is 2.4 GHz, and that the WiFi name and the proxy name are spelled exactly right, capitals and spaces included. To redo the setup: on *Device & Network*, hold the switch in for 5 s, choose *Yes* |
 | The display stays on the version splash | The power adapter is too weak. Replace it |
 | *CareLink login needed* | Right after a power cut or a cable change: in the shell, `sudo systemctl restart carelink2-proxy` and wait 5 minutes. Only if that does not help is the token gone: run a renewal with the care-partner account (runbook, Staging the Pi, step 5) |
 | Signal reads *weak* | Move the display, or add a WiFi access point near it |

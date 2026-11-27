@@ -183,7 +183,7 @@ to see 12 hours instead of 3; press again to go back.
 | **Trend** | the last 3 hours as a line (press the switch in for 12 hours, with the hours labelled every three), with dashed lines at 70 and 180, a dotted line at 100 (the pump's target), and the hours along the bottom. On the display, the zones below 70 and above 180 are dotted; the clear band between them is in range. The scale stretches to fit the readings; a number at the top right shows how high it goes when a peak passes 200. The dot is the latest reading; a line that stops short of the right edge means no readings came in since |
 | **Statistics** | the last 24 hours: time in range, above, below, and the average |
 | **Pump** | reservoir, pump battery, and sensor age |
-| **Device & Network** | the WiFi it uses and how good the signal is, and the display's own battery. Your helper may ask you to read this one out |
+| **Device & Network** | the WiFi it uses and how good the signal is, and the display's own battery. Your helper may ask you to read this one out. A short press of the switch here shows a *Debug* screen with counts for your helper; press again or flick to leave it |
 
 At the next reading, within five minutes, the display returns to *Glucose* by
 itself.
@@ -206,7 +206,9 @@ says why. It appears only after about 15 minutes, so a short gap never shows.
 | *No new reading for …* | everything answers, but the reading has not changed | check the patient's phone and its MiniMed app |
 | *Proxy has no data* | the gateway cannot reach CareLink | check that your internet works; the gateway tries again every minute |
 | *CareLink login needed* | CareLink wants a new sign-in | call your helper (see below) |
-| *No link to proxy* | the display cannot reach the gateway | check that the gateway has power and its cable; then restart both (below) |
+| *No WiFi - see Network* | the display cannot join the WiFi | flick to *Device & Network*: check the WiFi name, and that *Signal* is not *weak*; move the display closer to the router or check the router is on |
+| *Update failed - see Network* | the display tried to update but did not finish, several times; nearly always a WiFi signal too weak to work with | flick to *Device & Network*: if *Signal* is *weak*, move the display closer to the router; if it keeps showing, restart both (below) |
+| *No link to proxy* | the display is on the WiFi but cannot reach the gateway | check that the gateway has power and its cable; then restart both (below) |
 
 ("Proxy" is the gateway.)
 

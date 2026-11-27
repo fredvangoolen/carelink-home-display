@@ -289,6 +289,10 @@ static const char *link_text(int link) {
     case LINK_PROXY_NO_DATA: return "Proxy has no data";
     case LINK_PROXY_LOGIN:   return "CareLink login needed";
     case LINK_NO_PROXY:      return "No link to proxy";
+    // The two the display has on its own. Both point at the screen that
+    // shows which network it tried and how strong it was.
+    case LINK_NO_WIFI:       return "No WiFi - see Network";
+    case LINK_ABORTED:       return "Update failed - see Network";
     default:                 return "";
   }
 }
@@ -841,13 +845,29 @@ void draw_info_screen(LovyanGFX &g, const State &s, const Config &c,
   if (level < 0) snprintf(batt, sizeof(batt), "--");
   else           snprintf(batt, sizeof(batt), "%d%%", level);
 
-  char clock[8];
-  if (time(nullptr) > 1600000000) {
-    struct tm now;
-    local_tm(time(nullptr), c.timezone, s.dstDelta, now);
-    snprintf(clock, sizeof(clock), "%02d:%02d", now.tm_hour, now.tm_min);
+  // How the last poll went, and when: what someone sent here by "No WiFi"
+  // or "Update failed" on the main screen came to find out. It took the
+  // place of a plain clock row, which the main screen's "Updated" row
+  // already carries. Reads the poll's own result, before the three-poll
+  // smoothing, so a fault shows here from the first poll that has it.
+  char last_poll[24];
+  if (s.pollAt > 1600000000 && time(nullptr) > 1600000000) {
+    const char *how;
+    switch (s.rawLink) {
+      case LINK_OK:
+      case LINK_NO_SENSOR:     how = "ok";          break;   // the link worked
+      case LINK_PROXY_NO_DATA: how = "proxy empty"; break;
+      case LINK_PROXY_LOGIN:   how = "login";       break;
+      case LINK_NO_PROXY:      how = "no proxy";    break;
+      case LINK_NO_WIFI:       how = "no WiFi";     break;
+      case LINK_ABORTED:       how = "cut off";     break;
+      default:                 how = "?";           break;
+    }
+    struct tm at;
+    local_tm(s.pollAt, c.timezone, s.dstDelta, at);
+    snprintf(last_poll, sizeof(last_poll), "%02d:%02d %s", at.tm_hour, at.tm_min, how);
   } else {
-    snprintf(clock, sizeof(clock), "--");
+    snprintf(last_poll, sizeof(last_poll), "--");
   }
 
   // Signal at the last poll, with a word for it: the number alone means
@@ -873,7 +893,7 @@ void draw_info_screen(LovyanGFX &g, const State &s, const Config &c,
   struct { const char *label; const char *value; } rows[] = {
     {"Battery",  batt},
     {"Runtime",  runtime.c_str()},
-    {"Time",     clock},
+    {"Last poll", last_poll},
     // The network actually connected, not merely the one configured - with
     // several slots, "which am I on?" is the useful answer.
     {"WiFi",     s.ssid[0] ? s.ssid
@@ -896,9 +916,67 @@ void draw_info_screen(LovyanGFX &g, const State &s, const Config &c,
   }
 }
 
+// What a person sends to whoever looks after the set: counts since the last
+// reset, so "Watchdog 2, last 03:14" can be read out over the phone. Same
+// row layout as Device & Network, and the same number of rows, which is
+// what that screen proved fits.
+static void draw_debug_screen(LovyanGFX &g, const State &s, const Config &c,
+                              const DebugStats *d) {
+  g.fillScreen(COLOR_WHITE);
+  int y = draw_screen_header(g, "DEBUG SINCE RESET");
+
+  char polls[24] = "--", wdt[24] = "--", brown[8] = "--", crash[8] = "--";
+  char nowifi[8] = "--", noproxy[8] = "--", planb[8] = "--", awake[24] = "--";
+  char mv[12] = "--";
+  if (d) {
+    snprintf(polls, sizeof(polls), "%lu/%lu ok",
+             (unsigned long)d->polls, (unsigned long)d->pollsOk);
+    if (d->watchdog && d->watchdogAt > 1600000000) {
+      struct tm at;
+      local_tm(d->watchdogAt, c.timezone, s.dstDelta, at);
+      snprintf(wdt, sizeof(wdt), "%u, %02d:%02d", (unsigned)d->watchdog,
+               at.tm_hour, at.tm_min);
+    } else {
+      snprintf(wdt, sizeof(wdt), "%u", (unsigned)d->watchdog);
+    }
+    snprintf(brown,   sizeof(brown),   "%u", (unsigned)d->brownout);
+    snprintf(crash,   sizeof(crash),   "%u", (unsigned)d->crashes);
+    snprintf(nowifi,  sizeof(nowifi),  "%u", (unsigned)d->noWifi);
+    snprintf(noproxy, sizeof(noproxy), "%u", (unsigned)d->noProxy);
+    snprintf(planb,   sizeof(planb),   "%u", (unsigned)d->planB);
+    // Average / longest of the polls that finished: the battery cost, and
+    // how close the slowest came to the watchdog's 3 minutes.
+    if (d->awakeN)
+      snprintf(awake, sizeof(awake), "%.1f/%.0f s",
+               d->awakeSumMs / 1000.0 / d->awakeN, d->awakeMaxMs / 1000.0);
+  }
+  // Measured now, with the radio down: on USB it reads the charging voltage.
+  int bmv = battery_mv();
+  if (bmv > 0) snprintf(mv, sizeof(mv), "%d", bmv);
+
+  struct { const char *label; const char *value; } rows[] = {
+    {"Polls",    polls},
+    {"Watchdog", wdt},
+    {"Brownout", brown},
+    {"Crashes",  crash},
+    {"No WiFi",  nowifi},
+    {"No proxy", noproxy},
+    {"Plan B",   planb},
+    {"Awake",    awake},
+    {"Batt mV",  mv},
+  };
+  int lh = font_height(g, FONT_LABEL);
+  for (auto &r : rows) {
+    draw_kv_row(g, y, r.label, FONT_LABEL, r.value, FONT_LABEL, COLOR_BLACK);
+    y += lh + 5;
+  }
+}
+
 void draw_current_screen(LovyanGFX &g, int screen, const State &s,
-                         const Config &c, time_t session_start, bool trend12h) {
+                         const Config &c, time_t session_start, bool trend12h,
+                         const DebugStats *dbg) {
   switch (screen) {
+    case SCREEN_DEBUG: draw_debug_screen(g, s, c, dbg);            break;
     case SCREEN_TREND: draw_trend_screen(g, s, c, trend12h);       break;
     case SCREEN_STATS: draw_stats_screen(g, s);                    break;
     case SCREEN_PUMP:  draw_pump_screen(g, s, c);                  break;

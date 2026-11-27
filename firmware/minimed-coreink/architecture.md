@@ -60,8 +60,9 @@ Sectioned by banner comments, in the order the cycle uses them:
 | buzzer | `beep()`, including waiting out its own note |
 | polling | `fetch_pump_data()` — the ArduinoJson parse |
 | display | `compose()`, plus diagnostics behind `DEBUG_ASCII` |
-| toggle | the IRQ latch, `arm_toggle_wake()`, `run_toggle_session()`, the short press on the trend screen (3 h / 12 h, session-only, every arrival starts at 3 h), the press-and-hold configuration wipe (`run_wipe_dialog()`) |
-| rtc state | the `RtcState` struct in `RTC_DATA_ATTR` |
+| toggle | the IRQ latch, `arm_toggle_wake()`, `run_toggle_session()`, the short press on the trend screen (3 h / 12 h, session-only, every arrival starts at 3 h), the press-and-hold configuration wipe (`run_wipe_dialog()`), a short press on the info screen for the debug screen (`SCREEN_DEBUG`, outside the rotation; counters in `rtc.stats`) |
+| rtc state | the `RtcState` struct in `RTC_NOINIT_ATTR` |
+| fail-safe | `watchdog_arm()`, `watchdog_off()`, `cycle_aborted()`: the budget per wake and which resets count as an aborted cycle |
 | main | `sleep_until()` and `setup()` |
 
 ### `types.h`
@@ -121,12 +122,17 @@ NVS until `/save`. See the README's setup section for the user-facing side.
 ```
 setup()
  |- release pad hold, Serial, pin TZ to UTC
- |- read RTC state -> cold boot? wake cause?
+ |- read RTC state -> cold boot? (reset reason + magic) wake cause?
+ |- watchdog_arm(180 s)
  |- M5.begin(clear_display = true)     <- the anti-ghosting clear, ~1.9 s
- |- config_read()  -> empty? run_config_portal(), never returns
+ |- config_read()  -> empty? watchdog_off(), run_config_portal(), never returns
  |
- |- TOGGLE WAKE --> advance screen, compose() from rtc.snap   (no network)
- |                  run_toggle_session()  -> sleep_until(next_poll)
+ |- TOGGLE WAKE --> watchdog_off(), advance screen, compose() from
+ |                  rtc.snap (no network), run_toggle_session()
+ |                  -> sleep_until(next_poll)
+ |
+ |- ABORTED (watchdog, panic, brownout) --> count a failed poll,
+ |                  compose() from rtc.snap (no network), sleep 60 s / 300 s
  |
  `- SCHEDULED POLL
      |- WiFi connect (~1.2 s), capture the IP while the radio is up
@@ -155,6 +161,14 @@ shift the schedule.
 so arming a held-down pin makes deep sleep return immediately and the board
 spins wake/redraw/sleep until the battery is flat — which is what a switch
 resting off-centre looks like.
+
+**Every wake is bounded, and ends drawn.** The panel is wiped at the start
+of a wake, so a wake that never reaches its draw leaves it blank. The task
+watchdog cuts off a wake that overruns its budget; the reset that follows
+keeps `rtc` (`RTC_NOINIT_ATTR`) and the next boot redraws from `rtc.snap`
+before anything else. `RTC_DATA_ATTR` would not do: it is reloaded from the
+image on every reset that is not a deep-sleep wake. Measured 2026-11-27 on
+hardware, including that the power latch holds through the reset.
 
 **The panel is cleared on every wake.** Not an oversight to optimise away:
 without it the display ghosts until a changed screen cannot be read, and no

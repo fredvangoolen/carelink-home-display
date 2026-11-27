@@ -194,7 +194,7 @@ woorden; hieronder staat wat ze betekenen.
 | **Trend** | de laatste 3 uur als lijn (*Last 3 hours*; schakelaar indrukken voor 12 uur, *Last 12 hours*, met elk derde uur onderaan), met streepjeslijnen bij 70 en 180, een fijne stippellijn bij 100 (het streefdoel van de pomp), en de uren onderaan. Op het scherm zijn de zones onder 70 en boven 180 gestippeld; de lege band ertussen is binnen bereik. De schaal past zich aan de metingen aan; gaat een piek boven 200, dan staat rechtsboven tot hoe hoog. De stip is de laatste meting; stopt de lijn voor de rechterrand, dan kwamen er sindsdien geen metingen binnen |
 | **Statistiek** | de laatste 24 uur: tijd binnen bereik (*In range*), erboven (*Above*), eronder (*Below*), en het gemiddelde (*Average*) |
 | **Pomp** | het reservoir, de batterij van de pomp, en hoe lang de sensor al zit |
-| **Device & Network** | de wifi die het display gebruikt en hoe goed het signaal is, en de batterij van het display zelf. Je helper kan je vragen dit scherm voor te lezen |
+| **Device & Network** | de wifi die het display gebruikt en hoe goed het signaal is, en de batterij van het display zelf. Je helper kan je vragen dit scherm voor te lezen. Druk hier kort op de schakelaar voor een *Debug*-scherm met tellers voor je helper; druk nog eens of beweeg de schakelaar om terug te gaan |
 
 Bij de volgende meting, binnen vijf minuten, keert het display vanzelf terug
 naar *Glucose*.
@@ -219,7 +219,9 @@ onderbreking nooit te zien is.
 | *No new reading for …* | alles antwoordt, maar de meting verandert niet | kijk de telefoon van de patiënt en de MiniMed-app na |
 | *Proxy has no data* | de gateway bereikt CareLink niet | kijk na of je internet werkt; de gateway probeert het elke minuut opnieuw |
 | *CareLink login needed* | CareLink vraagt een nieuwe aanmelding | bel je helper (zie hieronder) |
-| *No link to proxy* | het display bereikt de gateway niet | kijk na of de gateway stroom en zijn kabel heeft; herstart dan beide (hieronder) |
+| *No WiFi - see Network* | het display komt niet op de wifi | ga naar *Device & Network*: kijk de wifinaam na, en of *Signal* niet *weak* is; zet het display dichter bij de router, of kijk na of de router aanstaat |
+| *Update failed - see Network* | het display probeerde bij te werken maar raakte niet klaar, meermaals na elkaar; bijna altijd een te zwak wifisignaal | ga naar *Device & Network*: staat *Signal* op *weak*, zet het display dan dichter bij de router; blijft het, herstart dan beide (hieronder) |
+| *No link to proxy* | het display is op de wifi maar bereikt de gateway niet | kijk na of de gateway stroom en zijn kabel heeft; herstart dan beide (hieronder) |
 
 ("Proxy" is de gateway.)
 

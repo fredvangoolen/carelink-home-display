@@ -59,6 +59,18 @@ pin that latches the power rail on. Hold the PWR button, or plug in USB, to
 bring it back. The firmware's README has the measurements ("Power hold, from
 reset").
 
+## A blank panel is a wake that never finished
+
+Every wake starts by wiping the panel white and draws only at the end, so a
+blank panel (not a stale one) means the board woke and never got to its
+draw: a hang or a reset part-way, and on battery a board that may then stay
+awake or switch off. Seen once, 2026-11-27, on the home board at 67%, at a
+spot with -88 dBm WiFi; reset and start brought it back, and nothing was
+left to say which it was. Since then a watchdog bounds every poll and the
+next boot redraws the last reading (docs/display-messages.md, "When a poll
+does not finish"); the debug screen's *Watchdog* and *Brownout* rows say
+which it was next time.
+
 ## A weak USB port passes every test except WiFi
 
 A marginal supply cannot source the radio's power-up inrush. Flashing and the

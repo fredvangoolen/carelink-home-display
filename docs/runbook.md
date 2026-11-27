@@ -311,7 +311,25 @@ Two things say which link in the chain pump → phone → CareLink → proxy →
 | *No new reading for …* | everything answers, but the reading has not changed for 20 minutes: the patient's phone app, or a proxy stuck on one fetch | if the phone is fine: restart the proxy |
 | *Proxy has no data* | the Pi cannot reach CareLink: its own internet connection, or a CareLink outage | *Logged in, but no data from CareLink*, with the reason; it retries every minute |
 | *CareLink login needed* | the token: CareLink refused it | *Valid token required*; *refused the token refresh* means a renewal is needed |
-| *No link to proxy* | the Pi is down, or the display cannot reach it | the page does not open either, or it does and the WiFi is the problem: check the Signal row on *Device & Network* |
+| *No link to proxy* | the display is on the WiFi but cannot reach the Pi: the Pi is down, or the network keeps devices apart | the page does not open either, or it does and the network is the problem: check the Signal row on *Device & Network* |
+| *No WiFi - see Network* | the display joins no WiFi at all (plan A nor plan B) | unaffected; check the WiFi name and *Signal* on *Device & Network* |
+| *Update failed - see Network* | the display's polls do not finish: its watchdog cut them off, or brownouts; nearly always a weak signal | unaffected; ask for the *Debug* screen (below) |
+
+**The debug screen.** A short press of the switch on *Device & Network* shows *DEBUG SINCE RESET*; another short press or a flick leaves it. It counts since the display was last switched on or reset with the back button, in RAM only (nothing written to flash), and the resets it counts do not clear it:
+
+| Row | Counts |
+| --- | --- |
+| *Polls* | polls started / those that brought data from the proxy |
+| *Watchdog* | polls cut off after 3 minutes, and the time of the last |
+| *Brownout* | resets from a supply dip: battery or adapter too weak for the WiFi radio |
+| *Crashes* | other crash resets; should stay 0 |
+| *No WiFi* | wakes that joined no network |
+| *No proxy* | joined, but the proxy did not answer |
+| *Plan B* | polls over the Pi's travel hotspot |
+| *Awake* | average / longest poll that finished, seconds: the battery cost, and how near the watchdog |
+| *Batt mV* | battery voltage now; on USB, the charging voltage |
+
+Watchdog or Brownout above 0 tells apart what the panel cannot: a hang or a power dip.
 
 A message appears only after about 15 minutes, so a short gap never shows. [display-messages.md](display-messages.md) has every message, which one wins, and when each clears. On the bench, the serial log's `comms` line has the same chain in raw form (pump-phone, phone-cloud, the proxy's answer, the failure streak and the proxy address).
 

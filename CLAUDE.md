@@ -95,7 +95,13 @@ arduino-cli compile --fqbn "$FQBN" --upload -p <port> firmware/minimed-coreink
 - ArduinoJson rejects input that looser parsers accept (an empty string from a
   proxy with a dead token, for one). Check what the proxy really sends.
 - **Test builds** (`-DPLAN_A_RETRY_CYCLES=2`, `-DPORTAL_AP_TEST=1`,
-  `LAYOUT_TEST`) must never be left on a board; see docs/testing.md.
+  `-DWATCHDOG_TEST_S=20`, `LAYOUT_TEST`) must never be left on a board; see
+  docs/testing.md.
+- A watchdog bounds every scheduled poll (3 minutes; toggle sessions are not watched); the next boot redraws
+  the last snapshot and sleeps. `RtcState` is `RTC_NOINIT_ATTR` so it
+  survives that reset; `setup()` decides what a cold boot is from the reset
+  reason. Anything new that blocks for long (the setup portal) must call
+  `watchdog_off()` first.
 - Power the board from a proper adapter. A weak USB port passes everything
   except the WiFi radio's inrush and then looks like a software hang
   (docs/lessons.md).

@@ -98,6 +98,10 @@ enum { SCREEN_MAIN = 0, SCREEN_TREND = 1, SCREEN_STATS = 2, SCREEN_PUMP = 3,
 // Which way a flick moves through that list. Down walks forward in the order
 // above; up walks back the way you came, which is the only reason the second
 // direction exists.
+// Not in the rotation: a short press on SCREEN_INFO shows it in place of
+// that screen, and another short press or any flick leaves it.
+static const int SCREEN_DEBUG = 99;
+
 static const int SCREEN_FORWARD = +1;
 static const int SCREEN_BACK    = -1;
 
@@ -119,6 +123,7 @@ int  battery_mv();   // median of several ADC reads, millivolts
 int  battery_state(int mv, int prev);   // BATT_*, with hysteresis
 void draw_main_screen(LovyanGFX &g, const State &s, const Config &c);
 // trend12h: the trend screen's 12-hour view instead of its 3-hour one.
+// dbg: the counters for SCREEN_DEBUG; that screen shows "--" without them.
 void draw_current_screen(LovyanGFX &g, int screen, const State &s,
                          const Config &c, time_t session_start,
-                         bool trend12h = false);
+                         bool trend12h = false, const DebugStats *dbg = nullptr);

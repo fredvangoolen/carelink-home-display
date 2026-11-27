@@ -21,7 +21,7 @@ firmware takes the first rule that matches, in this order
 | 1 | **Pump alarm**, e.g. *Low Sensor Glucose (14:05)* | `lastAlarm` less than 15 minutes old, with a `faultId`. Text from the fault table; the time in brackets is when it happened | 15 minutes after the alarm; a low alarm once the reading is above 70, a high alarm once it is below 180; or a confirmed link fault |
 | 2 | **The pump's own banner**, e.g. *Pump suspended* | No reading confirmed, the pump in range of the phone, and CareLink sends a pump banner: that banner is the reason, so it wins over *No sensor data* | When the banner goes or a reading returns |
 | 3 | ***No sensor data since 13:40*** | No reading confirmed (3 polls), a reading seen since the board started | On the first poll with a reading |
-| 4 | **Link fault**: *No link to proxy*, *CareLink login needed*, *Proxy has no data*, or plain *No sensor data* | The fault confirmed (3 polls) | On the first poll that gets data again |
+| 4 | **Link fault**: *No WiFi - see Network*, *Update failed - see Network*, *No link to proxy*, *CareLink login needed*, *Proxy has no data*, or plain *No sensor data* | The fault confirmed (3 polls) | On the first poll that gets data again |
 | 5 | ***No new reading for 25 min*** | Everything answers, but the reading is 20 minutes old or more | When a newer reading arrives |
 | 6 | **Pump banner or system status**, e.g. *BG REQUIRED* | Nothing above applies and CareLink sends one | When CareLink stops sending it |
 | — | nothing | Default | |
@@ -41,7 +41,9 @@ Everything except the alarm texts (from `faults.cpp`) and the pump banners
 | *No sensor data* | The same, with no reading seen since the board started (or no valid clock), so no time to name | As above |
 | *CareLink login needed* | The proxy answered with no data and its status page says *Valid token required*. Someone has to sign in again | 3 polls in a row |
 | *Proxy has no data* | The proxy answered with an empty body and gave no reason: usually its own internet or a CareLink outage | 3 polls in a row |
-| *No link to proxy* | No HTTP answer from the proxy, or no WiFi network joined at all (after plan A and plan B) | 3 counted failures. After a failed WiFi join the quick looks at 60/60/60/120 s do not count |
+| *No WiFi - see Network* | No WiFi network joined at all, plan A nor plan B. *Device & Network* shows the network it tried and its signal at the last poll that joined | 3 counted failures. The quick looks at 60/60/60/120 s after a failed join do not count |
+| *Update failed - see Network* | The poll never finished: the display's watchdog cut it off after 3 minutes, it crashed, or its supply dipped (a brownout reset). Usually a WiFi too weak to work with; see below | 3 in a row (each one counts) |
+| *No link to proxy* | Joined the WiFi, but no HTTP answer from the proxy | 3 polls in a row |
 | *No new reading for …* | Everything answers but the reading does not move: the phone app, or a proxy stuck on one fetch | Reading 20 minutes old or more |
 | *Pump suspended* | Plain words for the pump banner `DELIVERY_SUSPEND`, the only pump banner reworded. Others show as CareLink names them, underscores turned into spaces | Wherever a pump banner shows |
 | *Unknown error code nnn* | A `faultId` missing from the fault table. Still an alarm, still beeps | Rule 1 |
@@ -64,6 +66,24 @@ the phone keeps uploading without a glucose value through a sensor gap, so
 that age stays under 5 minutes however long the gap lasts. Until 0.7 the
 display showed it, and read *No sensor data (1 min)* fifteen minutes into a
 gap.
+
+### When a poll does not finish
+
+Every wake starts by wiping the panel white and draws only at the end. A
+wake that stopped half-way used to leave a blank panel and a board that
+never slept again; it happened once, on 2026-11-27, at a spot with a WiFi
+signal of -88 dBm. Now a watchdog bounds every scheduled poll to 3 minutes
+(a toggle session, with a person at the switch, is not watched). When it fires, the board resets, finds the reason,
+redraws the last reading at once, without the network, and sleeps: a minute
+after the first such poll, the ordinary 5 minutes after more in a row. A
+brownout reset takes the same path. The last reading survives the reset
+(`RTC_NOINIT_ATTR`); its *Updated … ago* row keeps counting.
+
+*Device & Network* shows how the last poll went in its *Last poll* row:
+*09:22 ok*, *no WiFi*, *no proxy*, *proxy empty*, *login*, or *cut off* for
+an aborted one. Unlike the strip, it shows from the first poll that has the
+problem, and together with *WiFi* and *Signal* it is where *see Network*
+sends whoever reads the strip.
 
 ## Three polls before a fault shows
 
@@ -120,6 +140,9 @@ anything longer is cut at the end of line two.
 
 ## Where the desktop and the page differ
 
+- They have no WiFi join and no sleep cycle of their own, so never show
+  *No WiFi - see Network* or *Update failed - see Network*; their own
+  failed fetch is *No link to proxy*.
 - They poll every minute, not every 5. *No link to proxy* waits for 3
   missed polls (3 minutes); the other messages show from the first poll
   that has them.
