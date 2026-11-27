@@ -131,7 +131,9 @@ setup()
  |                  rtc.snap (no network), run_toggle_session()
  |                  -> sleep_until(next_poll)
  |
- |- ABORTED (watchdog, panic, brownout) --> count a failed poll,
+ |- BROWNOUT --> compose(SCREEN_CHARGE), then every 10 s: read the battery
+ |              BEFORE M5.begin(), sleep again below 3.8 V, else poll
+ |- ABORTED (watchdog, panic) --> count a failed poll,
  |                  compose() from rtc.snap (no network), sleep 60 s / 300 s
  |
  `- SCHEDULED POLL

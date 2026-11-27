@@ -1218,7 +1218,7 @@ static void arm_toggle_wake() {
 //
 // A plain struct, where MicroPython had to serialise JSON in and out of RTC
 // memory and re-hydrate it - about 120 lines that simply do not exist here.
-#define RTC_MAGIC 0x4D4D0313u   // bump when the layout changes (DebugStats)
+#define RTC_MAGIC 0x4D4D0314u   // bump when the layout changes (low_power)
 
 struct RtcState {
   uint32_t magic;
@@ -1238,6 +1238,8 @@ struct RtcState {
   uint16_t fallback_age;    // poll cycles since the proxy was last asked for the fallback; 0 = not yet
   uint8_t  aborts;          // cycles in a row that never finished (see cycle_aborted())
   DebugStats stats;         // the debug screen's counters
+  uint8_t  low_power;       // "Please charge" is up; polls wait for a charger
+  uint8_t  charge_draws;    // attempts at drawing it since the brownout
   State    snap;
 };
 
@@ -1359,6 +1361,52 @@ static void note_awake() {
   rtc.stats.awakeN++;
   rtc.stats.awakeSumMs += ms;
   if (ms > rtc.stats.awakeMaxMs) rtc.stats.awakeMaxMs = ms;
+}
+
+// ---------------------------------------------------------------- low power
+//
+// A brownout means the battery could not carry the WiFi radio's start-up.
+// From then on the board does not poll: it draws "Please charge" once and
+// checks the battery every LOW_POWER_CHECK_S, without the radio and BEFORE
+// M5.begin(), which would wipe the panel. E-paper keeps the message with no
+// power, so when the battery does run out it is still what the panel says;
+// a charger then starts the board with an ordinary power-on.
+//
+// The board cannot sense USB (no VBUS line; M5Unified reads only the
+// battery through its divider), so the voltage has to tell: a charger lifts
+// it at once, a battery left alone only sinks. 3.8 V is far enough above a
+// brownout to be a charger, and low enough that plugging in is answered
+// within a check or two rather than after half an hour of charging.
+#ifndef LOW_POWER_RESUME_MV
+#define LOW_POWER_RESUME_MV 3800
+#endif
+static const uint32_t LOW_POWER_CHECK_S = 10;
+// A brownout DURING the draw would otherwise retry it on every reset, on
+// the last of the battery.
+static const uint8_t  CHARGE_DRAW_TRIES = 3;
+
+// The battery voltage without M5.begin(): the same pin and divider as
+// M5Unified's (GPIO35, 25.1k/5.1k), median of five like battery_mv().
+static int battery_mv_early() {
+  int s[5];
+  for (int i = 0; i < 5; i++) {
+    s[i] = (int)(analogReadMilliVolts(35) * 25.1f / 5.1f);
+    delay(2);
+  }
+  for (int i = 1; i < 5; i++) {
+    int v = s[i], j = i - 1;
+    while (j >= 0 && s[j] > v) { s[j + 1] = s[j]; j--; }
+    s[j + 1] = v;
+  }
+  return s[2];
+}
+
+// Timer only: no toggle wake, since a flick would wipe the message to redraw.
+static void low_power_sleep() {
+  gpio_hold_en(POWER_HOLD_PIN);
+  gpio_deep_sleep_hold_en();
+  Serial.flush();
+  esp_deep_sleep((uint64_t)LOW_POWER_CHECK_S * 1000000ULL);
 }
 
 // -------------------------------------------------------------------- main
@@ -1663,6 +1711,36 @@ void setup() {
   release_pad_hold();
   Serial.begin(115200);
 
+  // --- Low power (see there): everything before M5.begin(), so the panel
+  // keeps "Please charge" while the board waits.
+  const esp_reset_reason_t reset_reason = esp_reset_reason();
+  bool brownout = (reset_reason == ESP_RST_BROWNOUT);
+#if BROWNOUT_TEST
+  // Bench only: the reset of a flash (or the power button) counts as a
+  // brownout, so the whole path runs on USB. -DBROWNOUT_TEST=1, and
+  // -DLOW_POWER_RESUME_MV=4500 to see it stay. Never leave on a board.
+  if (reset_reason == ESP_RST_POWERON || reset_reason == ESP_RST_EXT) brownout = true;
+#endif
+  if (reset_reason == ESP_RST_DEEPSLEEP && rtc.magic == RTC_MAGIC && rtc.low_power) {
+    int mv = battery_mv_early();
+    if (mv < LOW_POWER_RESUME_MV) {
+      Serial.printf("low power: %d mV, below %d, next check in %u s\n",
+                    mv, LOW_POWER_RESUME_MV, (unsigned)LOW_POWER_CHECK_S);
+      low_power_sleep();
+    }
+    Serial.printf("low power: %d mV - charging, back to polling\n", mv);
+    rtc.low_power = 0;
+    rtc.charge_draws = 0;
+  }
+  if (brownout && rtc.magic == RTC_MAGIC &&
+      (rtc.low_power || rtc.charge_draws >= CHARGE_DRAW_TRIES)) {
+    // Already up (a brownout during a check), or given up on: leave the
+    // panel alone and keep waiting.
+    Serial.println("low power: brownout again, message left as it is");
+    rtc.low_power = 1;
+    low_power_sleep();
+  }
+
   // Pin the runtime to UTC so mktime()/localtime() are UTC conversions; the
   // configured offset is applied only when drawing, as main.py does.
   setenv("TZ", "UTC0", 1);
@@ -1671,7 +1749,6 @@ void setup() {
   esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
   bool woke_on_toggle = (cause == ESP_SLEEP_WAKEUP_EXT0 ||
                          cause == ESP_SLEEP_WAKEUP_EXT1);
-  const esp_reset_reason_t reset_reason = esp_reset_reason();
   const bool kept = (reset_reason == ESP_RST_DEEPSLEEP || cycle_aborted(reset_reason));
   bool cold_boot = !kept || rtc.magic != RTC_MAGIC;
   if (cold_boot) {
@@ -1762,6 +1839,19 @@ void setup() {
     sleep_until(rtc.next_poll);   // does not return
   }
 
+  // --- Brownout: the battery cannot carry the radio. Say so, and wait for
+  // a charger instead of polling (see "low power").
+  if (brownout) {
+    rtc.stats.brownout++;
+    if (rtc.charge_draws < 255) rtc.charge_draws++;
+    Serial.printf("brownout: drawing Please charge (try %u), then checking every %u s\n",
+                  (unsigned)rtc.charge_draws, (unsigned)LOW_POWER_CHECK_S);
+    compose(SCREEN_CHARGE, rtc.snap, cfg, true, rtc.session_start);
+    M5.Display.powerSaveOn();
+    rtc.low_power = 1;   // only once it is on the panel
+    low_power_sleep();
+  }
+
   // --- The previous wake never finished: see "fail-safe". Draw what there
   // is and sleep, WITHOUT the network: whatever stopped that cycle may well
   // stop this one too, and a drawn panel now beats a blank one for minutes.
@@ -1769,9 +1859,7 @@ void setup() {
   if (!cold_boot && cycle_aborted(reset_reason)) {
     if (rtc.aborts < 255) rtc.aborts++;
     rtc.stats.polls++;   // the one that never finished
-    if (reset_reason == ESP_RST_BROWNOUT) {
-      rtc.stats.brownout++;
-    } else if (reset_reason == ESP_RST_PANIC) {
+    if (reset_reason == ESP_RST_PANIC) {
       rtc.stats.crashes++;
     } else {
       rtc.stats.watchdog++;

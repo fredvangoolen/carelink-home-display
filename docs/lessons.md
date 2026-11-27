@@ -69,7 +69,8 @@ spot with -88 dBm WiFi; reset and start brought it back, and nothing was
 left to say which it was. Since then a watchdog bounds every poll and the
 next boot redraws the last reading (docs/display-messages.md, "When a poll
 does not finish"); the debug screen's *Watchdog* and *Brownout* rows say
-which it was next time.
+which it was next time, and a brownout now leaves *Please charge* on the
+panel instead of a blank one.
 
 ## A weak USB port passes every test except WiFi
 

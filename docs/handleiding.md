@@ -219,6 +219,7 @@ onderbreking nooit te zien is.
 | *No new reading for …* | alles antwoordt, maar de meting verandert niet | kijk de telefoon van de patiënt en de MiniMed-app na |
 | *Proxy has no data* | de gateway bereikt CareLink niet | kijk na of je internet werkt; de gateway probeert het elke minuut opnieuw |
 | *CareLink login needed* | CareLink vraagt een nieuwe aanmelding | bel je helper (zie hieronder) |
+| *Please charge* (het hele scherm, met een lege batterij) | de batterij van het display is te zwak voor de wifi; het werkt niet meer bij | steek de USB-kabel in: binnen enkele seconden werkt het weer bij |
 | *No WiFi - see Network* | het display komt niet op de wifi | ga naar *Device & Network*: kijk de wifinaam na, en of *Signal* niet *weak* is; zet het display dichter bij de router, of kijk na of de router aanstaat |
 | *Update failed - see Network* | het display probeerde bij te werken maar raakte niet klaar, meermaals na elkaar; bijna altijd een te zwak wifisignaal | ga naar *Device & Network*: staat *Signal* op *weak*, zet het display dan dichter bij de router; blijft het, herstart dan beide (hieronder) |
 | *No link to proxy* | het display is op de wifi maar bereikt de gateway niet | kijk na of de gateway stroom en zijn kabel heeft; herstart dan beide (hieronder) |

@@ -42,7 +42,7 @@ Everything except the alarm texts (from `faults.cpp`) and the pump banners
 | *CareLink login needed* | The proxy answered with no data and its status page says *Valid token required*. Someone has to sign in again | 3 polls in a row |
 | *Proxy has no data* | The proxy answered with an empty body and gave no reason: usually its own internet or a CareLink outage | 3 polls in a row |
 | *No WiFi - see Network* | No WiFi network joined at all, plan A nor plan B. *Device & Network* shows the network it tried and its signal at the last poll that joined | 3 counted failures. The quick looks at 60/60/60/120 s after a failed join do not count |
-| *Update failed - see Network* | The poll never finished: the display's watchdog cut it off after 3 minutes, it crashed, or its supply dipped (a brownout reset). Usually a WiFi too weak to work with; see below | 3 in a row (each one counts) |
+| *Update failed - see Network* | The poll never finished: the display's watchdog cut it off after 3 minutes, or it crashed. Usually a WiFi too weak to work with; see below | 3 in a row (each one counts) |
 | *No link to proxy* | Joined the WiFi, but no HTTP answer from the proxy | 3 polls in a row |
 | *No new reading for …* | Everything answers but the reading does not move: the phone app, or a proxy stuck on one fetch | Reading 20 minutes old or more |
 | *Pump suspended* | Plain words for the pump banner `DELIVERY_SUSPEND`, the only pump banner reworded. Others show as CareLink names them, underscores turned into spaces | Wherever a pump banner shows |
@@ -75,9 +75,23 @@ never slept again; it happened once, on 2026-11-27, at a spot with a WiFi
 signal of -88 dBm. Now a watchdog bounds every scheduled poll to 3 minutes
 (a toggle session, with a person at the switch, is not watched). When it fires, the board resets, finds the reason,
 redraws the last reading at once, without the network, and sleeps: a minute
-after the first such poll, the ordinary 5 minutes after more in a row. A
-brownout reset takes the same path. The last reading survives the reset
-(`RTC_NOINIT_ATTR`); its *Updated … ago* row keeps counting.
+after the first such poll, the ordinary 5 minutes after more in a row. The
+last reading survives the reset (`RTC_NOINIT_ATTR`); its *Updated … ago*
+row keeps counting.
+
+### Please charge
+
+A brownout reset is different: the battery could not carry the WiFi
+radio's start-up, and trying again would only repeat it. The display then
+draws a screen of its own in place of the main screen: an empty battery
+with a plug, *Please charge*, and *Last reading HH:MM* (no glucose value,
+so an old number can never pass for a current one). It stops polling and
+checks the battery every 10 s, with the radio off and without touching the
+panel. At 3.8 V or more it polls again; the board cannot sense USB, but a
+charger lifts the voltage at once, so plugging in is answered within
+seconds. If the battery runs out first, the panel keeps the message (e-paper
+needs no power to hold it), and plugging in starts the board as from
+power-on.
 
 *Device & Network* shows how the last poll went in its *Last poll* row:
 *09:22 ok*, *no WiFi*, *no proxy*, *proxy empty*, *login*, or *cut off* for

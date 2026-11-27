@@ -101,6 +101,9 @@ enum { SCREEN_MAIN = 0, SCREEN_TREND = 1, SCREEN_STATS = 2, SCREEN_PUMP = 3,
 // Not in the rotation: a short press on SCREEN_INFO shows it in place of
 // that screen, and another short press or any flick leaves it.
 static const int SCREEN_DEBUG = 99;
+// Not in the rotation either: "Please charge", drawn after a brownout and
+// left on the panel while the board waits for a charger (see setup()).
+static const int SCREEN_CHARGE = 98;
 
 static const int SCREEN_FORWARD = +1;
 static const int SCREEN_BACK    = -1;

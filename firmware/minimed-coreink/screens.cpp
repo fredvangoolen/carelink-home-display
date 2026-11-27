@@ -972,10 +972,47 @@ static void draw_debug_screen(LovyanGFX &g, const State &s, const Config &c,
   }
 }
 
+// After a brownout: the battery could not carry the WiFi radio. This is
+// likely the last image the board draws before it runs flat, and e-paper
+// keeps it with no power, so it has to make sense on its own for days: an
+// empty battery, a plug, what to do, and the time of the last reading. No
+// glucose value - an old number left up for hours must not pass for a
+// current one.
+static void draw_charge_screen(LovyanGFX &g, const State &s, const Config &c) {
+  g.fillScreen(COLOR_WHITE);
+
+  // Empty battery, 3 px outline, nub on the right.
+  const int bx = 38, by = 22, bw = 112, bh = 54;
+  for (int i = 0; i < 3; i++)
+    g.drawRect(bx + i, by + i, bw - 2 * i, bh - 2 * i, COLOR_BLACK);
+  g.fillRect(bx + bw, by + (bh - 22) / 2, 9, 22, COLOR_BLACK);
+
+  // A plug pointing up at it, with its cable.
+  const int px = 100 - 13, py = 92;
+  g.fillRect(px + 5, py - 9, 5, 10, COLOR_BLACK);    // prongs
+  g.fillRect(px + 16, py - 9, 5, 10, COLOR_BLACK);
+  g.fillRoundRect(px, py, 26, 20, 3, COLOR_BLACK);    // body
+  g.fillRect(100 - 2, py + 20, 5, 12, COLOR_BLACK);   // cable
+
+  const char *msg = "Please charge";
+  int mw = text_width(g, msg, FONT_VALUE);
+  draw_text(g, msg, (PANEL_W - mw) / 2, 134, FONT_VALUE, COLOR_BLACK);
+
+  if (s.lastGoodAt > 1600000000) {
+    struct tm at;
+    local_tm(s.lastGoodAt, c.timezone, s.dstDelta, at);
+    char line[32];
+    snprintf(line, sizeof(line), "Last reading %02d:%02d", at.tm_hour, at.tm_min);
+    int lw = text_width(g, line, FONT_LABEL);
+    draw_text(g, line, (PANEL_W - lw) / 2, 172, FONT_LABEL, COLOR_BLACK);
+  }
+}
+
 void draw_current_screen(LovyanGFX &g, int screen, const State &s,
                          const Config &c, time_t session_start, bool trend12h,
                          const DebugStats *dbg) {
   switch (screen) {
+    case SCREEN_CHARGE: draw_charge_screen(g, s, c);              break;
     case SCREEN_DEBUG: draw_debug_screen(g, s, c, dbg);            break;
     case SCREEN_TREND: draw_trend_screen(g, s, c, trend12h);       break;
     case SCREEN_STATS: draw_stats_screen(g, s);                    break;

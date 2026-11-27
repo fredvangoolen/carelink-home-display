@@ -206,6 +206,7 @@ says why. It appears only after about 15 minutes, so a short gap never shows.
 | *No new reading for …* | everything answers, but the reading has not changed | check the patient's phone and its MiniMed app |
 | *Proxy has no data* | the gateway cannot reach CareLink | check that your internet works; the gateway tries again every minute |
 | *CareLink login needed* | CareLink wants a new sign-in | call your helper (see below) |
+| *Please charge* (whole screen, with an empty battery) | the display's battery is too low to use the WiFi; it has stopped updating | plug in the USB cable: it starts updating again within seconds |
 | *No WiFi - see Network* | the display cannot join the WiFi | flick to *Device & Network*: check the WiFi name, and that *Signal* is not *weak*; move the display closer to the router or check the router is on |
 | *Update failed - see Network* | the display tried to update but did not finish, several times; nearly always a WiFi signal too weak to work with | flick to *Device & Network*: if *Signal* is *weak*, move the display closer to the router; if it keeps showing, restart both (below) |
 | *No link to proxy* | the display is on the WiFi but cannot reach the gateway | check that the gateway has power and its cable; then restart both (below) |

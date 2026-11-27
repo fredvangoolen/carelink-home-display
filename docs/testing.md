@@ -6,7 +6,7 @@ done yet.
 
 ## Firmware test builds
 
-Four compile-time switches exist only for testing. Set them with
+Five compile-time switches exist only for testing. Set them with
 `--build-property "compiler.cpp.extra_flags=..."` on the `arduino-cli compile`
 command line; `LAYOUT_TEST` is a `#define` in the sketch.
 
@@ -15,6 +15,7 @@ command line; `LAYOUT_TEST` is a `#define` in the sketch.
 | `-DPLAN_A_RETRY_CYCLES=2` | on plan B, try plan A again every 2 cycles (10 minutes) instead of every 12 (one hour) |
 | `-DPORTAL_AP_TEST=1` | open the setup portal on every boot and store nothing |
 | `LAYOUT_TEST 1` | compose every screen once with synthetic data, including an alarm |
+| `-DBROWNOUT_TEST=1` | the reset of a flash (or the power button) counts as a brownout: *Please charge*, then a battery check every 10 s. On USB it resumes at the first check; add `-DLOW_POWER_RESUME_MV=4500` to see it stay |
 | `-DWATCHDOG_TEST_S=20` | hang every scheduled poll after the WiFi join and let the watchdog cut it off after 20 s: walks the recovery path (redraw, 60 s, then 300 s; *Update failed - see Network* from the third) |
 
 **A test build must never be left on a board.** `PORTAL_AP_TEST` in particular
@@ -255,12 +256,25 @@ came back as a cold boot after every reset: that is why it is
 it, a second press or a flick leaves it, the 5 s hold still offers the
 wipe, and all 9 rows fit (checked by eye).
 
+## Please charge after a brownout
+
+Tested 2026-11-27 on the home board, on USB, with `-DBROWNOUT_TEST=1`.
+With `-DLOW_POWER_RESUME_MV=4500`: the screen drawn once (checked by eye:
+battery, plug, *Please charge*), then a check every 10 s reading 4281 mV
+and back to sleep, the panel left alone. At the real 3.8 V: the screen,
+then 10 s later `low power: 4276 mV - charging, back to polling` and an
+ordinary poll. The voltage read before `M5.begin()` (4276 mV) matched
+M5Unified's (4271 mV) to 5 mV.
+
 ## Not tested yet
+
+- **Please charge from a real brownout**: the voltage a real brownout
+  happens at, how fast a charger lifts a nearly empty battery past 3.8 V,
+  and whether the draw itself survives on what is left.
 
 - **The watchdog fail-safe on battery**: that the power latch holds through
   a watchdog reset on battery, as it did on USB (a software reset was
-  measured to, see lessons.md). A brownout reset taking the recovery path,
-  and the counters after one, have not been seen at all: the cause of the
+  measured to, see lessons.md). A real brownout has not been seen at all: the cause of the
   blank panel of 2026-11-27 is still unknown. *No WiFi - see Network* has
   not been seen on the panel.
 
