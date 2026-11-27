@@ -1,3 +1,4 @@
+#include "esp_mac.h"
 #include "screens.h"
 #include <time.h>
 #include <math.h>
@@ -68,6 +69,19 @@ static void draw_text_bold(LovyanGFX &g, const char *s, int x, int y,
 // placed first and the label truncated to what is left, because if something
 // has to be clipped it should be the constant label, not the number that
 // actually changes. Returns the value's height.
+// Cuts text to max_w pixels, ending in "..." when it had to cut.
+static String fit_text(LovyanGFX &g, const String &text, const lgfx::IFont *font, int max_w) {
+  if (text_width(g, text.c_str(), font) <= max_w) return text;
+  int ell = text_width(g, "...", font);
+  String out;
+  for (unsigned i = 0; i < text.length(); i++) {
+    String cand = out + text[i];
+    if (text_width(g, cand.c_str(), font) + ell > max_w) break;
+    out = cand;
+  }
+  return out + "...";
+}
+
 static int draw_kv_row(LovyanGFX &g, int y,
                        const char *label, const lgfx::IFont *label_font,
                        const char *value, const lgfx::IFont *value_font,
@@ -934,9 +948,8 @@ static void draw_debug_screen(LovyanGFX &g, const State &s, const Config &c,
   g.fillScreen(COLOR_WHITE);
   int y = draw_screen_header(g, "DEBUG SINCE RESET");
 
-  char polls[24] = "--", wdt[24] = "--", brown[8] = "--", crash[8] = "--";
-  char nowifi[8] = "--", noproxy[8] = "--", planb[8] = "--", awake[24] = "--";
-  char mv[12] = "--";
+  char polls[24] = "--", wdt[24] = "--", resets[16] = "--", awake[24] = "--";
+  char mv[12] = "--", mac[20] = "--";
   if (d) {
     snprintf(polls, sizeof(polls), "%lu/%lu ok",
              (unsigned long)d->polls, (unsigned long)d->pollsOk);
@@ -948,11 +961,7 @@ static void draw_debug_screen(LovyanGFX &g, const State &s, const Config &c,
     } else {
       snprintf(wdt, sizeof(wdt), "%u", (unsigned)d->watchdog);
     }
-    snprintf(brown,   sizeof(brown),   "%u", (unsigned)d->brownout);
-    snprintf(crash,   sizeof(crash),   "%u", (unsigned)d->crashes);
-    snprintf(nowifi,  sizeof(nowifi),  "%u", (unsigned)d->noWifi);
-    snprintf(noproxy, sizeof(noproxy), "%u", (unsigned)d->noProxy);
-    snprintf(planb,   sizeof(planb),   "%u", (unsigned)d->planB);
+    snprintf(resets, sizeof(resets), "%u/%u", (unsigned)d->brownout, (unsigned)d->crashes);
     // Average / longest of the polls that finished: the battery cost, and
     // how close the slowest came to the watchdog's 3 minutes.
     if (d->awakeN)
@@ -962,17 +971,34 @@ static void draw_debug_screen(LovyanGFX &g, const State &s, const Config &c,
   // Measured now, with the radio down: on USB it reads the charging voltage.
   int bmv = battery_mv();
   if (bmv > 0) snprintf(mv, sizeof(mv), "%d", bmv);
+  // The WiFi station MAC, from eFuse - readable with the radio off. What a
+  // router's client list or a MAC filter knows the board by.
+  uint8_t m[6];
+  if (esp_read_mac(m, ESP_MAC_WIFI_STA) == ESP_OK)
+    snprintf(mac, sizeof(mac), "%02X:%02X:%02X:%02X:%02X:%02X",
+             m[0], m[1], m[2], m[3], m[4], m[5]);
+
+  // The configured networks first: which WiFi this board can join at all
+  // (slot 2 is the Pi's hotspot, usually learned from the proxy). SSIDs are
+  // user text of any length, so they are cut to fit beside their label.
+  static const char *slot_label[WIFI_SLOTS] = {"WiFi 1", "WiFi 2", "Fallback"};
+  String ssid[WIFI_SLOTS];
+  for (int i = 0; i < WIFI_SLOTS; i++) {
+    int room = PANEL_W - 2 * MARGIN - text_width(g, slot_label[i], FONT_LABEL) - 8;
+    ssid[i] = c.wifi[i].ssid.length() ? fit_text(g, c.wifi[i].ssid, FONT_LABEL, room)
+                                      : String("--");
+  }
 
   struct { const char *label; const char *value; } rows[] = {
-    {"Polls",    polls},
-    {"Watchdog", wdt},
-    {"Brownout", brown},
-    {"Crashes",  crash},
-    {"No WiFi",  nowifi},
-    {"No proxy", noproxy},
-    {"Plan B",   planb},
-    {"Awake",    awake},
-    {"Batt mV",  mv},
+    {slot_label[0], ssid[0].c_str()},
+    {slot_label[1], ssid[1].c_str()},
+    {slot_label[2], ssid[2].c_str()},
+    {"MAC",         mac},
+    {"Polls",       polls},
+    {"Watchdog",    wdt},
+    {"Brownout/crash", resets},
+    {"Awake",       awake},
+    {"Batt mV",     mv},
   };
   int lh = font_height(g, FONT_LABEL);
   for (auto &r : rows) {

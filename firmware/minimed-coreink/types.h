@@ -148,9 +148,6 @@ struct DebugStats {
   time_t   watchdogAt;   // when the last of those was found, epoch UTC; 0 = never
   uint16_t brownout;     // brownout resets
   uint16_t crashes;      // other crash resets (panic)
-  uint16_t noWifi;       // wakes that joined no network at all
-  uint16_t noProxy;      // joined, but the proxy did not answer
-  uint16_t planB;        // polls made over the fallback hotspot
   uint32_t awakeN;       // polls whose awake time was measured (finished ones)
   uint32_t awakeSumMs;
   uint32_t awakeMaxMs;

@@ -1218,7 +1218,7 @@ static void arm_toggle_wake() {
 //
 // A plain struct, where MicroPython had to serialise JSON in and out of RTC
 // memory and re-hydrate it - about 120 lines that simply do not exist here.
-#define RTC_MAGIC 0x4D4D0315u   // bump when the layout changes (poll history)
+#define RTC_MAGIC 0x4D4D0316u   // bump when the layout changes (debug counters dropped)
 
 struct RtcState {
   uint32_t magic;
@@ -1950,7 +1950,6 @@ void setup() {
     note_poll(-1, LINK_NO_WIFI);
     rtc.aborts = 0;   // this cycle finished, if without a network
     rtc.stats.polls++;
-    rtc.stats.noWifi++;
     expire_alarm(rtc.snap, cfg, link_fault_confirmed());
     // BOTH of these lines are load-bearing, and their absence is what turned
     // one flaky cycle into a blank panel that "recovered by itself".
@@ -2062,8 +2061,6 @@ void setup() {
 
   rtc.stats.polls++;
   note_poll(slot, s.rawLink);
-  if (s.rawLink == LINK_NO_PROXY) rtc.stats.noProxy++;
-  if (is_fallback(slot)) rtc.stats.planB++;
 
   note_link(s.link);
   const bool confirmed = link_fault_confirmed();

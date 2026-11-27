@@ -268,6 +268,14 @@ slot 0, scanned and joined slot 1 in the same wake (12.4 s), fetched, and
 *LAST POLLS* read one row with the home network and *ok* (checked by eye).
 Not yet seen: the page after a real *no proxy* or *no WiFi* poll.
 
+## Debug page with the WiFi slots and MAC (0.11)
+
+2026-11-27, on the travel board on USB: the page shows the three configured
+SSIDs, the MAC, and the counters, with Brownout and Crashes in one row;
+all 9 rows fit (checked by eye). The *No WiFi*, *No proxy* and *Plan B*
+counters are gone. The page showed at once what the log also said: that
+board was still set up for the office WiFi, not the phone hotspot.
+
 ## Please charge after a brownout
 
 Tested 2026-11-27 on the home board, on USB, with `-DBROWNOUT_TEST=1`.

@@ -315,17 +315,16 @@ Two things say which link in the chain pump → phone → CareLink → proxy →
 | *No WiFi - see Network* | the display joins no WiFi at all (plan A nor plan B) | unaffected; check the WiFi name and *Signal* on *Device & Network* |
 | *Update failed - see Network* | the display's polls do not finish: its watchdog cut them off; nearly always a weak signal | unaffected; ask for the *Debug* screen (below) |
 
-**The debug screen.** A short press of the switch on *Device & Network* shows *DEBUG SINCE RESET*, a second one *LAST POLLS*, a third goes back; a flick leaves either. It counts since the display was last switched on or reset with the back button, in RAM only (nothing written to flash), and the resets it counts do not clear it:
+**The debug screen.** A short press of the switch on *Device & Network* shows *DEBUG SINCE RESET*, a second one *LAST POLLS*, a third goes back; a flick leaves either. The networks and MAC are its settings; the counters count since the display was last switched on or reset with the back button, in RAM only (nothing written to flash), and the resets it counts do not clear it:
 
 | Row | Counts |
 | --- | --- |
+| *WiFi 1*, *WiFi 2* | the configured networks (plan A); `--` = empty, long names cut short |
+| *Fallback* | the Pi's travel hotspot (plan B), usually learned from the proxy |
+| *MAC* | the display's WiFi MAC address, as a router's client list shows it |
 | *Polls* | polls started / those that brought data from the proxy |
 | *Watchdog* | polls cut off after 3 minutes, and the time of the last |
-| *Brownout* | resets from a supply dip: battery or adapter too weak for the WiFi radio. Each one puts up *Please charge* until the battery reads 3.8 V |
-| *Crashes* | other crash resets; should stay 0 |
-| *No WiFi* | wakes that joined no network |
-| *No proxy* | joined, but the proxy did not answer |
-| *Plan B* | polls over the Pi's travel hotspot |
+| *Brownout/crash* | first number: resets from a supply dip: battery or adapter too weak for the WiFi radio. Each one puts up *Please charge* until the battery reads 3.8 V. Second: other crash resets; should stay 0 |
 | *Awake* | average / longest poll that finished, seconds: the battery cost, and how near the watchdog |
 | *Batt mV* | battery voltage now; on USB, the charging voltage |
 
