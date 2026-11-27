@@ -41,7 +41,7 @@ Everything except the alarm texts (from `faults.cpp`) and the pump banners
 | *No sensor data* | The same, with no reading seen since the board started (or no valid clock), so no time to name | As above |
 | *CareLink login needed* | The proxy answered with no data and its status page says *Valid token required*. Someone has to sign in again | 3 polls in a row |
 | *Proxy has no data* | The proxy answered with an empty body and gave no reason: usually its own internet or a CareLink outage | 3 polls in a row |
-| *No WiFi - see Network* | No WiFi network joined at all, plan A nor plan B. *Device & Network* shows the network it tried and its signal at the last poll that joined | 3 counted failures. The quick looks at 60/60/60/120 s after a failed join do not count |
+| *No WiFi - see Network* | No WiFi network joined at all, plan A nor plan B. *Device & Network* shows WiFi *none* | 3 counted failures. The quick looks at 60/60/60/120 s after a failed join do not count |
 | *Update failed - see Network* | The poll never finished: the display's watchdog cut it off after 3 minutes, or it crashed. Usually a WiFi too weak to work with; see below | 3 in a row (each one counts) |
 | *No link to proxy* | Joined the WiFi, but no HTTP answer from the proxy | 3 polls in a row |
 | *No new reading for …* | Everything answers but the reading does not move: the phone app, or a proxy stuck on one fetch | Reading 20 minutes old or more |
@@ -97,7 +97,10 @@ power-on.
 *09:22 ok*, *no WiFi*, *no proxy*, *proxy empty*, *login*, or *cut off* for
 an aborted one. Unlike the strip, it shows from the first poll that has the
 problem, and together with *WiFi* and *Signal* it is where *see Network*
-sends whoever reads the strip.
+sends whoever reads the strip. *WiFi*, *Signal* and *IP* are those of the
+last poll too, failed ones included (*none* when it joined nothing); before
+0.10 only a poll that brought data updated them. The debug screen's second
+page, *LAST POLLS*, has the last 8 polls.
 
 ## Three polls before a fault shows
 

@@ -315,7 +315,7 @@ Two things say which link in the chain pump → phone → CareLink → proxy →
 | *No WiFi - see Network* | the display joins no WiFi at all (plan A nor plan B) | unaffected; check the WiFi name and *Signal* on *Device & Network* |
 | *Update failed - see Network* | the display's polls do not finish: its watchdog cut them off; nearly always a weak signal | unaffected; ask for the *Debug* screen (below) |
 
-**The debug screen.** A short press of the switch on *Device & Network* shows *DEBUG SINCE RESET*; another short press or a flick leaves it. It counts since the display was last switched on or reset with the back button, in RAM only (nothing written to flash), and the resets it counts do not clear it:
+**The debug screen.** A short press of the switch on *Device & Network* shows *DEBUG SINCE RESET*, a second one *LAST POLLS*, a third goes back; a flick leaves either. It counts since the display was last switched on or reset with the back button, in RAM only (nothing written to flash), and the resets it counts do not clear it:
 
 | Row | Counts |
 | --- | --- |
@@ -328,6 +328,8 @@ Two things say which link in the chain pump → phone → CareLink → proxy →
 | *Plan B* | polls over the Pi's travel hotspot |
 | *Awake* | average / longest poll that finished, seconds: the battery cost, and how near the watchdog |
 | *Batt mV* | battery voltage now; on USB, the charging voltage |
+
+**LAST POLLS** lists the last 8 polls, newest first: time, the network the poll joined (`-` = none) and its result, the same words as *Last poll* (*ok*, *no proxy*, *proxy empty*, *login*, *no WiFi*, *cut off*). It shows whether the display changed networks and whether that worked, e.g. after a phone hotspot is switched off: the home network with *no proxy* while the Pi is still on the hotspot, then the home network with *ok* once the Pi is back on the home WiFi. Kept in RAM like the counters.
 
 Watchdog or Brownout above 0 tells apart what the panel cannot: a hang or a power dip. A *Please charge* screen with the battery well charged (it says *Batt mV* above 3.8 V once charging) points at an aged battery or a weak adapter rather than an empty one.
 

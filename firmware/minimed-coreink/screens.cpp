@@ -835,6 +835,21 @@ void draw_pump_screen(LovyanGFX &g, const State &s, const Config &c) {
   }
 }
 
+// How one poll went, in a word or two: the info screen's "Last poll" row and
+// the history page. NO_SENSOR counts as ok - the link worked.
+static const char *poll_result_text(int link) {
+  switch (link) {
+    case LINK_OK:
+    case LINK_NO_SENSOR:     return "ok";
+    case LINK_PROXY_NO_DATA: return "proxy empty";
+    case LINK_PROXY_LOGIN:   return "login";
+    case LINK_NO_PROXY:      return "no proxy";
+    case LINK_NO_WIFI:       return "no WiFi";
+    case LINK_ABORTED:       return "cut off";
+    default:                 return "?";
+  }
+}
+
 void draw_info_screen(LovyanGFX &g, const State &s, const Config &c,
                       time_t session_start) {
   g.fillScreen(COLOR_WHITE);
@@ -852,17 +867,7 @@ void draw_info_screen(LovyanGFX &g, const State &s, const Config &c,
   // smoothing, so a fault shows here from the first poll that has it.
   char last_poll[24];
   if (s.pollAt > 1600000000 && time(nullptr) > 1600000000) {
-    const char *how;
-    switch (s.rawLink) {
-      case LINK_OK:
-      case LINK_NO_SENSOR:     how = "ok";          break;   // the link worked
-      case LINK_PROXY_NO_DATA: how = "proxy empty"; break;
-      case LINK_PROXY_LOGIN:   how = "login";       break;
-      case LINK_NO_PROXY:      how = "no proxy";    break;
-      case LINK_NO_WIFI:       how = "no WiFi";     break;
-      case LINK_ABORTED:       how = "cut off";     break;
-      default:                 how = "?";           break;
-    }
+    const char *how = poll_result_text(s.rawLink);
     struct tm at;
     local_tm(s.pollAt, c.timezone, s.dstDelta, at);
     snprintf(last_poll, sizeof(last_poll), "%02d:%02d %s", at.tm_hour, at.tm_min, how);
@@ -894,10 +899,14 @@ void draw_info_screen(LovyanGFX &g, const State &s, const Config &c,
     {"Battery",  batt},
     {"Runtime",  runtime.c_str()},
     {"Last poll", last_poll},
-    // The network actually connected, not merely the one configured - with
-    // several slots, "which am I on?" is the useful answer.
+    // The network the last poll joined, not merely the one configured - with
+    // several slots, "which am I on?" is the useful answer. Written on every
+    // poll, failed ones included; "none" when the last one joined nothing.
+    // (Until 0.9 only a poll that brought data updated it, so a board that
+    // had moved on from a hotspot that was switched off went on naming it.)
     {"WiFi",     s.ssid[0] ? s.ssid
-                           : (c.wifi[0].ssid.length() ? c.wifi[0].ssid.c_str() : "--")},
+                 : s.rawLink == LINK_NO_WIFI ? "none"
+                 : (c.wifi[0].ssid.length() ? c.wifi[0].ssid.c_str() : "--")},
     {"Signal",   signal},
     {"IP",       s.ip[0] ? s.ip : "--"},
     // Port on its own row, not as host:port, so a long host name keeps the
@@ -972,6 +981,36 @@ static void draw_debug_screen(LovyanGFX &g, const State &s, const Config &c,
   }
 }
 
+// The debug screen's second page: the last polls, newest first, one row
+// each - time and network on the left (the network cut short when it does
+// not fit), the result on the right. Answers "did it change networks, and
+// did that work?" without a laptop.
+static void draw_history_screen(LovyanGFX &g, const State &s, const Config &c,
+                                const DebugStats *d) {
+  g.fillScreen(COLOR_WHITE);
+  int y = draw_screen_header(g, "LAST POLLS");
+  int lh = font_height(g, FONT_LABEL);
+  int shown = 0;
+  for (int i = 1; d && i <= POLL_HISTORY; i++) {
+    const DebugStats::PollRec &r = d->hist[(d->histNext + POLL_HISTORY - i) % POLL_HISTORY];
+    if (!r.at) break;
+    char when[8] = "--:--";
+    if (r.at > 1600000000) {
+      struct tm at;
+      local_tm(r.at, c.timezone, s.dstDelta, at);
+      snprintf(when, sizeof(when), "%02d:%02d", at.tm_hour, at.tm_min);
+    }
+    const char *net = (r.slot >= 0 && r.slot < WIFI_SLOTS && c.wifi[r.slot].ssid.length())
+                        ? c.wifi[r.slot].ssid.c_str() : "-";
+    String left = String(when) + " " + net;
+    draw_kv_row(g, y, left.c_str(), FONT_LABEL, poll_result_text(r.link), FONT_LABEL,
+                COLOR_BLACK);
+    y += lh + 5;
+    shown++;
+  }
+  if (!shown) draw_text(g, "No polls yet", MARGIN, y, FONT_LABEL, COLOR_BLACK);
+}
+
 // After a brownout: the battery could not carry the WiFi radio. This is
 // likely the last image the board draws before it runs flat, and e-paper
 // keeps it with no power, so it has to make sense on its own for days: an
@@ -1014,6 +1053,7 @@ void draw_current_screen(LovyanGFX &g, int screen, const State &s,
   switch (screen) {
     case SCREEN_CHARGE: draw_charge_screen(g, s, c);              break;
     case SCREEN_DEBUG: draw_debug_screen(g, s, c, dbg);            break;
+    case SCREEN_HISTORY: draw_history_screen(g, s, c, dbg);        break;
     case SCREEN_TREND: draw_trend_screen(g, s, c, trend12h);       break;
     case SCREEN_STATS: draw_stats_screen(g, s);                    break;
     case SCREEN_PUMP:  draw_pump_screen(g, s, c);                  break;

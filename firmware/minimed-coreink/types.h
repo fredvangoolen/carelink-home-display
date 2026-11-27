@@ -154,7 +154,16 @@ struct DebugStats {
   uint32_t awakeN;       // polls whose awake time was measured (finished ones)
   uint32_t awakeSumMs;
   uint32_t awakeMaxMs;
+  // The last POLL_HISTORY scheduled polls, for the second debug page: when,
+  // over which WiFi slot (-1 = joined none) and how it went (the poll's own
+  // LINK_*, before the 3-cycle smoothing). A ring; at 0 = unused entry.
+  // Added after a board looked stuck on a phone hotspot that was off: it had
+  // already moved to the home WiFi, but those polls got no data, and nothing
+  // on the panel could say so.
+  struct PollRec { time_t at; int8_t slot; int8_t link; } hist[8];
+  uint8_t histNext;      // where the next record goes
 };
+static const int POLL_HISTORY = 8;
 
 inline void state_init(State &s) {
   memset(&s, 0, sizeof(s));

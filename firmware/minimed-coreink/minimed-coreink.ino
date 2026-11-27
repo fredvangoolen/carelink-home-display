@@ -1218,7 +1218,7 @@ static void arm_toggle_wake() {
 //
 // A plain struct, where MicroPython had to serialise JSON in and out of RTC
 // memory and re-hydrate it - about 120 lines that simply do not exist here.
-#define RTC_MAGIC 0x4D4D0314u   // bump when the layout changes (low_power)
+#define RTC_MAGIC 0x4D4D0315u   // bump when the layout changes (poll history)
 
 struct RtcState {
   uint32_t magic;
@@ -1356,6 +1356,15 @@ static bool cycle_aborted(esp_reset_reason_t r) {
 // How long this poll kept the board awake, for the debug screen. Called on
 // the scheduled paths just before sleep_until(); a poll the watchdog cut off
 // never gets here, and the Watchdog row counts those instead.
+// One scheduled poll for the history page: slot -1 = joined no network.
+static void note_poll(int slot, int link) {
+  DebugStats::PollRec &r = rtc.stats.hist[rtc.stats.histNext % POLL_HISTORY];
+  r.at = time(nullptr);
+  r.slot = (int8_t)slot;
+  r.link = (int8_t)link;
+  rtc.stats.histNext = (rtc.stats.histNext + 1) % POLL_HISTORY;
+}
+
 static void note_awake() {
   uint32_t ms = (uint32_t)(esp_timer_get_time() / 1000);
   rtc.stats.awakeN++;
@@ -1554,9 +1563,10 @@ static int run_toggle_session(int screen, const State &s, const Config &c,
   // The trend screen's view. Every arrival on that screen starts at 3 hours,
   // so the screen a caregiver knows is always the one they get first.
   bool trend12h = false;
-  // The debug screen, shown in place of the info screen. Session-only like
-  // the trend's view: every arrival on the info screen starts without it.
-  bool debug = false;
+  // The debug pages, shown in place of the info screen: 0 = none, 1 = the
+  // counters, 2 = the last polls. Session-only like the trend's view: every
+  // arrival on the info screen starts without them.
+  int debug = 0;
 
   while ((int32_t)(deadline - millis()) > 0 &&
          (int32_t)(hard_stop - millis()) > 0) {
@@ -1607,7 +1617,7 @@ static int run_toggle_session(int screen, const State &s, const Config &c,
         run_wipe_dialog();   // returns only on No
         holding = false;
         press_armed = false;   // re-arms once the switch is seen released
-        debug = false;
+        debug = 0;
         toggle_take();
         refresh_battery();
         compose(screen, s, c, true, session_start);
@@ -1630,12 +1640,14 @@ static int run_toggle_session(int screen, const State &s, const Config &c,
       delay(TOGGLE_DEBOUNCE_MS);
       toggle_take();
       if (held >= DEBUG_PRESS_MIN_MS) {
-        debug = !debug;
+        debug = (debug + 1) % 3;
+        static const int page[3] = {SCREEN_INFO, SCREEN_DEBUG, SCREEN_HISTORY};
+        static const char *name[3] = {"info", "debug", "history"};
         uint32_t t_draw = millis();
         refresh_battery();
-        compose(debug ? SCREEN_DEBUG : screen, s, c, false, session_start);
+        compose(page[debug], s, c, false, session_start);
         Serial.printf("toggle: press -> %s, redraw %u ms\n",
-                      debug ? "debug" : "info", (unsigned)(millis() - t_draw));
+                      name[debug], (unsigned)(millis() - t_draw));
         deadline = millis() + TOGGLE_AWAKE_MS;
       }
       continue;
@@ -1649,7 +1661,7 @@ static int run_toggle_session(int screen, const State &s, const Config &c,
       if (dir == 0) dir = SCREEN_FORWARD;
       screen = screen_step(screen, dir);
       trend12h = false;
-      debug = false;   // a flick from the debug screen moves on from info
+      debug = 0;   // a flick from a debug page moves on from info
 
       // Wait for release BEFORE drawing, so holding the switch does not
       // queue a second advance. BOUNDED: a stuck-low pin must not park the
@@ -1866,6 +1878,7 @@ void setup() {
       rtc.stats.watchdogAt = time(nullptr);
     }
     note_link(LINK_ABORTED);
+    note_poll(rtc.wifi_slot, LINK_ABORTED);   // the network it last joined, if any
     const bool confirmed = link_fault_confirmed();
     if (confirmed) rtc.snap.link = LINK_ABORTED;
     rtc.snap.rawLink = LINK_ABORTED;
@@ -1930,6 +1943,11 @@ void setup() {
     if (link_fault_confirmed()) rtc.snap.link = LINK_NO_WIFI;
     rtc.snap.rawLink = LINK_NO_WIFI;
     rtc.snap.pollAt = time(nullptr);
+    // Joined nothing: the info screen says "none", not the last network.
+    rtc.snap.ssid[0] = '\0';
+    rtc.snap.ip[0] = '\0';
+    rtc.snap.rssi = 0;
+    note_poll(-1, LINK_NO_WIFI);
     rtc.aborts = 0;   // this cycle finished, if without a network
     rtc.stats.polls++;
     rtc.stats.noWifi++;
@@ -2043,6 +2061,7 @@ void setup() {
   WiFi.mode(WIFI_OFF);
 
   rtc.stats.polls++;
+  note_poll(slot, s.rawLink);
   if (s.rawLink == LINK_NO_PROXY) rtc.stats.noProxy++;
   if (is_fallback(slot)) rtc.stats.planB++;
 
@@ -2196,6 +2215,11 @@ void setup() {
     // again before anyone reads it.
     if (confirmed) rtc.snap.link = s.link;
     rtc.snap.rawLink = s.rawLink;
+    // The network this poll joined, although it brought no data: the info
+    // screen must name where the board is now, not where it last got data.
+    snprintf(rtc.snap.ip, sizeof(rtc.snap.ip), "%s", local_ip.c_str());
+    snprintf(rtc.snap.ssid, sizeof(rtc.snap.ssid), "%s", cfg.wifi[slot].ssid.c_str());
+    rtc.snap.rssi = wifi_rssi;
     rtc.snap.pollAt = time(nullptr);
     expire_alarm(rtc.snap, cfg, confirmed);
     // The schedule has to advance on this path too, or sleep_until() falls to

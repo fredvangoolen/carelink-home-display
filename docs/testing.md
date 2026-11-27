@@ -256,6 +256,18 @@ came back as a cold boot after every reset: that is why it is
 it, a second press or a flick leaves it, the 5 s hold still offers the
 wipe, and all 9 rows fit (checked by eye).
 
+## Network row on every poll, LAST POLLS (0.10)
+
+Found 2026-11-27 on the home board set up for the phone hotspot (slot 0)
+and the home WiFi (slot 1): with the hotspot off, *Device & Network* kept
+naming the hotspot. The board had already moved to the home WiFi (the next
+log said `cached AP` on slot 1), but those polls brought no data while the
+Pi was still on the hotspot, and only a poll with data updated the row.
+After the fix, on the same board with the hotspot off: a cold boot tried
+slot 0, scanned and joined slot 1 in the same wake (12.4 s), fetched, and
+*LAST POLLS* read one row with the home network and *ok* (checked by eye).
+Not yet seen: the page after a real *no proxy* or *no WiFi* poll.
+
 ## Please charge after a brownout
 
 Tested 2026-11-27 on the home board, on USB, with `-DBROWNOUT_TEST=1`.

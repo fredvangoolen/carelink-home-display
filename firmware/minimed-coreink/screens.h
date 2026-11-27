@@ -12,7 +12,7 @@
 
 // Shown on the info screen; kept here so both the screen and the sketch
 // agree on one string.
-#define VERSION_STR "0.9-arduino"
+#define VERSION_STR "0.10"
 
 static const int PANEL_W = 200;
 static const int PANEL_H = 200;
@@ -99,8 +99,11 @@ enum { SCREEN_MAIN = 0, SCREEN_TREND = 1, SCREEN_STATS = 2, SCREEN_PUMP = 3,
 // above; up walks back the way you came, which is the only reason the second
 // direction exists.
 // Not in the rotation: a short press on SCREEN_INFO shows it in place of
-// that screen, and another short press or any flick leaves it.
+// that screen, a second one SCREEN_HISTORY, a third the info screen again;
+// any flick leaves them.
 static const int SCREEN_DEBUG = 99;
+// The debug screen's second page: the last polls (a second short press).
+static const int SCREEN_HISTORY = 97;
 // Not in the rotation either: "Please charge", drawn after a brownout and
 // left on the panel while the board waits for a charger (see setup()).
 static const int SCREEN_CHARGE = 98;

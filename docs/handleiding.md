@@ -194,7 +194,7 @@ woorden; hieronder staat wat ze betekenen.
 | **Trend** | de laatste 3 uur als lijn (*Last 3 hours*; schakelaar indrukken voor 12 uur, *Last 12 hours*, met elk derde uur onderaan), met streepjeslijnen bij 70 en 180, een fijne stippellijn bij 100 (het streefdoel van de pomp), en de uren onderaan. Op het scherm zijn de zones onder 70 en boven 180 gestippeld; de lege band ertussen is binnen bereik. De schaal past zich aan de metingen aan; gaat een piek boven 200, dan staat rechtsboven tot hoe hoog. De stip is de laatste meting; stopt de lijn voor de rechterrand, dan kwamen er sindsdien geen metingen binnen |
 | **Statistiek** | de laatste 24 uur: tijd binnen bereik (*In range*), erboven (*Above*), eronder (*Below*), en het gemiddelde (*Average*) |
 | **Pomp** | het reservoir, de batterij van de pomp, en hoe lang de sensor al zit |
-| **Device & Network** | de wifi die het display gebruikt en hoe goed het signaal is, en de batterij van het display zelf. Je helper kan je vragen dit scherm voor te lezen. Druk hier kort op de schakelaar voor een *Debug*-scherm met tellers voor je helper; druk nog eens of beweeg de schakelaar om terug te gaan |
+| **Device & Network** | de wifi die het display gebruikt en hoe goed het signaal is, en de batterij van het display zelf. Je helper kan je vragen dit scherm voor te lezen. Druk hier kort op de schakelaar voor een *Debug*-scherm met tellers voor je helper, nog eens voor *Last polls* (tijd, wifi en resultaat van de laatste 8), een derde keer om terug te gaan; de schakelaar bewegen gaat ook terug |
 
 Bij de volgende meting, binnen vijf minuten, keert het display vanzelf terug
 naar *Glucose*.

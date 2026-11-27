@@ -60,7 +60,7 @@ Sectioned by banner comments, in the order the cycle uses them:
 | buzzer | `beep()`, including waiting out its own note |
 | polling | `fetch_pump_data()` — the ArduinoJson parse |
 | display | `compose()`, plus diagnostics behind `DEBUG_ASCII` |
-| toggle | the IRQ latch, `arm_toggle_wake()`, `run_toggle_session()`, the short press on the trend screen (3 h / 12 h, session-only, every arrival starts at 3 h), the press-and-hold configuration wipe (`run_wipe_dialog()`), a short press on the info screen for the debug screen (`SCREEN_DEBUG`, outside the rotation; counters in `rtc.stats`) |
+| toggle | the IRQ latch, `arm_toggle_wake()`, `run_toggle_session()`, the short press on the trend screen (3 h / 12 h, session-only, every arrival starts at 3 h), the press-and-hold configuration wipe (`run_wipe_dialog()`), short presses on the info screen for the debug pages (`SCREEN_DEBUG`, then `SCREEN_HISTORY`, outside the rotation; counters and the last 8 polls in `rtc.stats`) |
 | rtc state | the `RtcState` struct in `RTC_NOINIT_ATTR` |
 | fail-safe | `watchdog_arm()`, `watchdog_off()`, `cycle_aborted()`: the budget per wake and which resets count as an aborted cycle |
 | main | `sleep_until()` and `setup()` |
